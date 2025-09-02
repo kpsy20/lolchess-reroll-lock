@@ -3,7 +3,8 @@ import React, {useCallback, useEffect, useMemo, useState} from "react";
 import Image from 'next/image';
 import type {Unit} from "./lib/types";
 import {
-    XP_REQ, ODDS, COST_COLORS, COST_TEXT, COST_BG, STORAGE_KEY, BENCH_SIZE
+    XP_REQ, ODDS, COST_COLORS, COST_TEXT, COST_BG, STORAGE_KEY, BENCH_SIZE,
+    TRAIT_BREAKPOINTS, GOLD_ALWAYS_TRAITS, BP_TIER_CLASS, TRAIT_DISPLAY_RANGE, ROSTER
 } from "./lib/constants";
 import {
     clx, coins, makeShop, normalizeStar, mergeAllUnits, maxStarForKeyAcross,
@@ -11,7 +12,7 @@ import {
 } from "./lib/utils";
 
 export default function TFTShop() {
-    const [gold, setGold] = useState(999);
+    const [gold, setGold] = useState(100);
     const [level, setLevel] = useState(3);
     const [xp, setXp] = useState(0);
     const [shop, setShop] = useState<(Unit | null)[]>(() => makeShop(3, [], []));
@@ -34,8 +35,8 @@ export default function TFTShop() {
         if (raw) {
             try {
                 const s = JSON.parse(raw);
-                setGold(s.gold ?? 50);
-                setLevel(s.level ?? 5);
+                setGold(s.gold ?? 100);
+                setLevel(s.level ?? 3);
                 setXp(s.xp ?? 0);
                 // normalize bench first so we can compute a pool-aware shop
                 const benchArr: (Unit | null)[] = Array.from({ length: BENCH_SIZE }, (_, i) =>
@@ -44,7 +45,7 @@ export default function TFTShop() {
                 setBench(benchArr);
                 setLocked(!!s.locked);
                 // use the current board state (initially empty) and benchArr to rebuild shop if none saved
-                setShop(s.shop ?? makeShop(s.level ?? 5, board, benchArr));
+                setShop(s.shop ?? makeShop(s.level ?? 3, board, benchArr));
             } catch {
             }
         }
@@ -57,7 +58,29 @@ export default function TFTShop() {
     }, [gold, level, xp, shop, locked, bench]);
 
     const odds = ODDS[level] || ODDS[3];
-    const xpReq = XP_REQ[level] ?? 0;
+    const xpReq = XP_REQ[level] ?? 2; // levels 1-2 use a minimal requirement so you can level up
+    // Wanted units (for shop highlight)
+    const [wanted, setWanted] = useState<Set<string>>(new Set());
+
+    // Flatten roster for the selector grid (right panel)
+    const allUnits = useMemo(() => {
+        const arr: Array<{ key: string; name: string; img?: string; cost: number }> = [];
+        (Object.keys(ROSTER) as Array<keyof typeof ROSTER>).forEach((k) => {
+            const cost = Number(k);
+            ROSTER[cost].forEach((u) => arr.push({ key: u.key, name: u.name, img: u.img, cost }));
+        });
+        // sort by cost asc, then name
+        arr.sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+        return arr;
+    }, []);
+
+    const toggleWanted = useCallback((key: string) => {
+        setWanted((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            return next;
+        });
+    }, []);
     const benchIsFull = bench.every((slot) => slot !== null);
 
     // Actions
@@ -75,6 +98,17 @@ export default function TFTShop() {
         setGold((g) => g - 4);
         setXp((v) => v + 4);
     }, [canBuyXP]);
+
+    // Level stepper: only allow up/down, resets XP on change
+    const nudgeLevel = useCallback((delta: number) => {
+        setLevel((prev) => {
+            const next = Math.max(1, Math.min(10, prev + delta));
+            if (next !== prev) {
+                setXp(0); // manual level change resets XP
+            }
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         // Level up once threshold reached
@@ -195,6 +229,152 @@ export default function TFTShop() {
         return s;
     }, [bench, board]);
 
+    // Keys present on board only
+    const boardKeySet = useMemo(() => {
+        const s = new Set<string>();
+        board.forEach((u) => { if (u) s.add(u.key); });
+        return s;
+    }, [board]);
+
+    // Precompute trait -> list of units (with cost), sorted by cost asc then name
+    const traitUnitMap = useMemo(() => {
+        const map = new Map<string, Array<{ key: string; name: string; img?: string; cost: number }>>();
+        (Object.keys(ROSTER) as Array<keyof typeof ROSTER>).forEach((k) => {
+            const cost = Number(k);
+            ROSTER[cost].forEach((u) => {
+                u.traits.forEach((t) => {
+                    if (!map.has(t)) map.set(t, []);
+                    map.get(t)!.push({ key: u.key, name: u.name, img: u.img, cost });
+                });
+            });
+        });
+        for (const [t, arr] of map) {
+            arr.sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+        }
+        return map;
+    }, []);
+
+    // Trait counts (board only) — count **unique champions** per trait (not copies)
+    const traitCounts = useMemo(() => {
+        const map = new Map<string, Set<string>>(); // trait -> set of unit keys
+        board.forEach((u) => {
+            if (!u) return;
+            u.traits.forEach((t) => {
+                if (!map.has(t)) map.set(t, new Set());
+                map.get(t)!.add(u.key);
+            });
+        });
+        const entries: Array<[string, number]> = Array.from(map.entries()).map(([t, set]) => [t, set.size]);
+        // Sort by count desc, then name asc
+        return entries.sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]));
+    }, [board]);
+
+
+    // Map for unique champion count per trait (board only)
+    const traitUniqueMap = useMemo(() => {
+        const map = new Map<string, Set<string>>();
+        board.forEach((u) => {
+            if (!u) return;
+            u.traits.forEach((t) => {
+                if (!map.has(t)) map.set(t, new Set());
+                map.get(t)!.add(u.key);
+            });
+        });
+        const num = new Map<string, number>();
+        for (const [t, set] of map.entries()) num.set(t, set.size);
+        return num;
+    }, [board]);
+
+    // 3★ units on board (instances). Used for the special "크루" synergy.
+    const threeStarOnBoard = useMemo(() => {
+        let n = 0;
+        for (const u of board) {
+            if (u && (u.star ?? 1) >= 3) n++;
+        }
+        return n;
+    }, [board]);
+
+    // ---- Trait tier helpers ----
+    type TraitTier = 'none' | 'bronze' | 'silver' | 'gold';
+    const tierForTrait = React.useCallback((trait: string, count: number): TraitTier => {
+        // Special rule: "크루" tiers depend on the number of 3★ units on board
+        if (trait === '크루') {
+            const n = threeStarOnBoard;
+            if (n >= 3) return 'gold';
+            if (n >= 1) return 'silver';
+            return 'bronze'; // 3★ 0개는 브론즈
+        }
+        // 항상 골드 처리되는 트레이트
+        if (GOLD_ALWAYS_TRAITS.has(trait) && count >= 1) return 'gold';
+        const bps = TRAIT_BREAKPOINTS[trait];
+        if (!bps || count <= 0) return 'none';
+        // 멘토 등 2단계짜리(예: [1,4]) 처리
+        if (bps.length === 1) return count >= bps[0] ? 'gold' : 'none';
+        if (bps.length === 2) {
+            if (count >= bps[1]) return 'gold';
+            if (count >= bps[0]) return 'bronze';
+            return 'none';
+        }
+        // 3단계(브론즈/실버/골드)
+        if (count >= bps[2]) return 'gold';
+        if (count >= bps[1]) return 'silver';
+        if (count >= bps[0]) return 'bronze';
+        return 'none';
+    }, [threeStarOnBoard]);
+
+    // Sorted traits: active (tier != 'none') first, then inactive; sort by unique count desc, then name
+    const sortedTraits = useMemo(() => {
+        const rows = traitCounts.map(([trait, cnt]) => ({ trait, cnt, tier: tierForTrait(trait, cnt) }));
+        rows.sort((a, b) => {
+            const aActive = a.tier !== 'none' ? 1 : 0;
+            const bActive = b.tier !== 'none' ? 1 : 0;
+            if (aActive !== bActive) return bActive - aActive; // active first
+            if (a.cnt !== b.cnt) return b.cnt - a.cnt;         // more champions first
+            return a.trait.localeCompare(b.trait);
+        });
+        return rows;
+    }, [traitCounts, tierForTrait]);
+
+    // Helper: next breakpoint for a trait
+    const nextBpForTrait = useCallback((trait: string, count: number): number | null => {
+        // Crew handled separately in render
+        if (GOLD_ALWAYS_TRAITS.has(trait)) return 1;
+        const bps = TRAIT_BREAKPOINTS[trait];
+        if (!bps) return null;
+        for (let i = 0; i < bps.length; i++) {
+            if (count < bps[i]) return bps[i];
+        }
+        // already at/over max tier; keep last bp for display
+        return bps[bps.length - 1] ?? null;
+    }, []);
+
+    // Value used to evaluate a trait (crew uses 3★ count)
+    const valueForTrait = useCallback((trait: string, cnt: number) => {
+        return trait === '크루' ? threeStarOnBoard : cnt;
+    }, [threeStarOnBoard]);
+
+    // What numbers to show to the right for each trait (UI chips)
+    const displayNumbersForTrait = useCallback((trait: string) => {
+        if (TRAIT_DISPLAY_RANGE[trait]) return TRAIT_DISPLAY_RANGE[trait];
+        if (trait === '크루') return [0, 1, 3];
+        return TRAIT_BREAKPOINTS[trait] ?? [];
+    }, []);
+
+    // Given a trait and a number x (from the display list), return which tier color it should have
+    const tierOfNumber = useCallback((trait: string, x: number): 'bronze' | 'silver' | 'gold' | null => {
+        const bps = TRAIT_BREAKPOINTS[trait];
+        if (!bps) return null;
+        const idx = bps.findIndex((bp) => bp === x);
+        if (idx === -1) return null; // not an official breakpoint; neutral color
+        return (['bronze', 'silver', 'gold'] as const)[Math.min(idx, 2)];
+    }, []);
+
+    const tierClass = (tier: TraitTier) =>
+        tier === 'gold' ? 'bg-yellow-400/25 ring-yellow-300/60 text-yellow-200' :
+        tier === 'silver' ? 'bg-slate-300/20 ring-slate-200/50 text-slate-100' :
+        tier === 'bronze' ? 'bg-amber-600/25 ring-amber-400/60 text-amber-200' :
+        'bg-black/40 ring-white/10 text-white/80';
+
     // ---- Drag & Drop state ----
     type DragSrc = { from: 'bench' | 'board'; index: number } | null;
     const [dragSrc, setDragSrc] = useState<DragSrc>(null);
@@ -203,6 +383,10 @@ export default function TFTShop() {
     // ---- Hover state for W toggle ----
     type Hover = { over: 'bench' | 'board'; index: number } | null;
     const [hover, setHover] = useState<Hover>(null);
+
+    // Hover state for trait tooltip
+    const [hoveredTrait, setHoveredTrait] = useState<string | null>(null);
+    const grayscaleIf = (cond: boolean) => (cond ? '' : 'grayscale opacity-60');
 
     const beginDragBench = (index: number) => (e: React.DragEvent) => {
         if (!bench[index]) return;
@@ -245,46 +429,94 @@ export default function TFTShop() {
     const clearBoardAt = (idx: number) => setBoard((bd) => bd.map((c, i) => (i === idx ? null : c)));
     const dropToBoard = (bdIdx: number) => {
         if (!dragSrc) return;
-        if (board[bdIdx]) return; // only empty target
+        const targetFilled = !!board[bdIdx];
+
         if (dragSrc.from === 'bench') {
-            if (boardCount >= level) {
+            const u = bench[dragSrc.index];
+            if (!u) return;
+            if (!targetFilled) {
+                if (boardCount >= level) { endDrag(); return; }
+                // original path into empty board + merge
+                moveBenchToBoard(dragSrc.index, bdIdx);
                 endDrag();
                 return;
             }
-            moveBenchToBoard(dragSrc.index, bdIdx);
-        }
-        if (dragSrc.from === 'board') {
-            const u = board[dragSrc.index];
-            if (!u) return;
-            const nextBoard = board.map((cell, i) => (i === bdIdx ? cell ?? u : i === dragSrc.index ? null : cell));
-            const merged = mergeAllUnits(nextBoard, bench);
-            setBoard(merged.board);
-            setBench(merged.bench);
+            // bench -> occupied board : swap without merging
+            const nextBoard = board.map((cell, i) => (i === bdIdx ? (normalizeStar(u) as Unit) : cell));
+            const nextBench = bench.map((cell, i) => (i === dragSrc.index ? board[bdIdx] : cell));
+            setBoard(nextBoard);
+            setBench(nextBench);
             endDrag();
             return;
         }
+
+        if (dragSrc.from === 'board') {
+            const u = board[dragSrc.index];
+            if (!u) return;
+            if (!targetFilled) {
+                // original path board -> empty board + merge check
+                const nextBoard = board.map((cell, i) => (i === bdIdx ? cell ?? u : i === dragSrc.index ? null : cell));
+                const merged = mergeAllUnits(nextBoard, bench);
+                setBoard(merged.board);
+                setBench(merged.bench);
+                endDrag();
+                return;
+            }
+            // board -> occupied board : swap without merging
+            const aIdx = dragSrc.index;
+            const bIdx2 = bdIdx;
+            const ua = board[aIdx]!;
+            const ub = board[bIdx2]!;
+            const nextBoard = board.map((cell, i) => (i === aIdx ? ub : i === bIdx2 ? ua : cell));
+            setBoard(nextBoard);
+            endDrag();
+            return;
+        }
+
         endDrag();
     };
 
     const dropToBench = (bIdx: number) => {
         if (!dragSrc) return;
-        if (bench[bIdx]) return; // only drop to empty bench slot
+        const targetFilled = !!bench[bIdx];
+
         if (dragSrc.from === 'board') {
             const u = board[dragSrc.index];
             if (!u) return;
-            const nextBench = bench.map((cell, i) => (i === bIdx ? normalizeStar(u) as Unit : cell));
-            const nextBoard = board.map((cell, i) => (i === dragSrc.index ? null : cell));
-            const merged = mergeAllUnits(nextBoard, nextBench);
-            setBench(merged.bench);
-            setBoard(merged.board);
+            if (!targetFilled) {
+                // original path: board -> empty bench then merge
+                const nextBench = bench.map((cell, i) => (i === bIdx ? (normalizeStar(u) as Unit) : cell));
+                const nextBoard = board.map((cell, i) => (i === dragSrc.index ? null : cell));
+                const merged = mergeAllUnits(nextBoard, nextBench);
+                setBench(merged.bench);
+                setBoard(merged.board);
+                endDrag();
+                return;
+            }
+            // board -> occupied bench : swap, no merge
+            const nextBench = bench.map((cell, i) => (i === bIdx ? (normalizeStar(u) as Unit) : cell));
+            const nextBoard = board.map((cell, i) => (i === dragSrc.index ? bench[bIdx] : cell));
+            setBench(nextBench);
+            setBoard(nextBoard);
             endDrag();
             return;
         }
+
         if (dragSrc.from === 'bench') {
             const u = bench[dragSrc.index];
             if (!u) return;
-            setBench((b) => b.map((cell, i) => (i === dragSrc.index ? null : i === bIdx ? u : cell)));
+            if (!targetFilled) {
+                // move bench -> empty bench
+                setBench((b) => b.map((cell, i) => (i === dragSrc.index ? null : i === bIdx ? u : cell)));
+                endDrag();
+                return;
+            }
+            // bench -> occupied bench : swap
+            setBench((b) => b.map((cell, i) => (i === dragSrc.index ? b[bIdx] : i === bIdx ? u : cell)));
+            endDrag();
+            return;
         }
+
         endDrag();
     };
 
@@ -375,6 +607,104 @@ export default function TFTShop() {
 
     return (
         <div className="w-full min-h-screen bg-slate-900 text-slate-100 flex items-end justify-center p-6">
+            {/* Left Trait Panel (board-only) */}
+            <div className="fixed left-4 top-24 z-40 w-44 select-none">
+            {/* Right Wanted Panel */}
+            <div className="fixed right-4 top-24 z-40 w-48 max-h-[70vh] overflow-auto select-none">
+                <div className="text-xs mb-2 px-2 py-1 rounded-md bg-black/40 ring-1 ring-white/10 text-white/80">원하는 유닛</div>
+                <div className="grid grid-cols-5 gap-1">
+                    {allUnits.map((u) => (
+                        <button
+                            key={u.key}
+                            type="button"
+                            onClick={() => toggleWanted(u.key)}
+                            className={clx(
+                                "relative w-8 h-8 rounded overflow-hidden ring-1",
+                                wanted.has(u.key) ? "ring-pink-400" : "ring-white/10 opacity-70"
+                            )}
+                            title={u.name}
+                        >
+                            <Image src={u.img ?? '/garen.jpg'} alt={u.name} fill className="object-cover" />
+                            <div className="absolute bottom-0 right-0 text-[8px] px-0.5 bg-black/70">{u.cost}</div>
+                            {wanted.has(u.key) && (
+                                <div className="absolute inset-0 ring-2 ring-pink-400/70" />
+                            )}
+                        </button>
+                    ))}
+                </div>
+            </div>
+                <div className="flex flex-col gap-1">
+                    {traitCounts.length === 0 ? (
+                        <div className="px-2 py-1 text-xs text-white/40"></div>
+                    ) : (
+                        sortedTraits.map(({ trait, cnt, tier }) => {
+                            const val = valueForTrait(trait, cnt);
+                            const nums = displayNumbersForTrait(trait);
+
+                            // Left small badge text
+                            let leftBadge = '';
+                            if (trait === '크루') {
+                                const uniq = traitUniqueMap.get('크루') ?? 0;
+                                leftBadge = String(uniq); // 유니크 크루 수
+                                // name will show trait; progress chips will show nums as below
+                            } else if (GOLD_ALWAYS_TRAITS.has(trait)) {
+                                leftBadge = String(cnt > 0 ? 1 : 0);
+                            } else {
+                                leftBadge = String(cnt);
+                            }
+
+                            return (
+                                <div
+                                    key={trait}
+                                    className={clx(
+                                        'relative flex items-center justify-between px-2 py-1 rounded-md ring-1 text-xs',
+                                        tierClass(tier)
+                                    )}
+                                    onMouseEnter={() => setHoveredTrait(trait)}
+                                    onMouseLeave={() => setHoveredTrait((h) => (h === trait ? null : h))}
+                                >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <div className="shrink-0 w-5 h-5 rounded bg-black/50 ring-1 ring-white/10 grid place-items-center text-[10px] font-semibold">
+                                            {leftBadge}
+                                        </div>
+                                        <span className="truncate">{trait}</span>
+                                    </div>
+                                    <div className="ml-2 flex items-center gap-1 shrink-0">
+                                        {nums.map((x, i) => {
+                                            const tierOfX = tierOfNumber(trait, x);
+                                            const palette = tierOfX ? BP_TIER_CLASS[tierOfX] : { on: 'text-white/90', off: 'text-white/30' };
+                                            const active = val >= x; // highlight if reached or exceeded
+                                            return (
+                                                <span key={i} className={clx('text-[10px] tabular-nums', active ? palette.on : palette.off)}>
+                                                    {x}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                    {hoveredTrait === trait && (
+                                        <div className="absolute left-full top-0 ml-2 z-50 w-44 rounded-md bg-black/80 ring-1 ring-white/15 p-2 shadow-xl backdrop-blur">
+                                            <div className="text-[10px] text-white/60 mb-1">{trait}</div>
+                                            <div className="grid grid-cols-5 gap-1">
+                                                {(traitUnitMap.get(trait) ?? []).map((u) => (
+                                                    <div key={u.key} className="relative w-8 h-8 rounded overflow-hidden ring-1 ring-white/10">
+                                                        <Image
+                                                            src={u.img ?? '/garen.jpg'}
+                                                            alt={u.name}
+                                                            fill
+                                                            className={clx('object-cover', grayscaleIf(boardKeySet.has(u.key)))}
+                                                        />
+                                                        <div className="absolute bottom-0 right-0 text-[8px] px-0.5 bg-black/70">{u.cost}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
             <div className="w-[1100px] max-w-full">
                 {/* Board (main field) – Hex (staggered) */}
                 {(() => {
@@ -491,6 +821,36 @@ export default function TFTShop() {
                                 className="px-3 py-1 rounded-md bg-black/40 ring-1 ring-white/10 text-yellow-300 font-bold">
                                 골드 {coins(gold)}
                             </div>
+                            <div className="flex items-center gap-2">
+                                <label className="text-xs opacity-80">Lv</label>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => nudgeLevel(-1)}
+                                        className="px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs disabled:opacity-40"
+                                        disabled={level <= 1}
+                                        title="레벨 내리기"
+                                    >−</button>
+                                    <div className="w-8 text-center text-xs select-none">{level}</div>
+                                    <button
+                                        type="button"
+                                        onClick={() => nudgeLevel(1)}
+                                        className="px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs disabled:opacity-40"
+                                        disabled={level >= 10}
+                                        title="레벨 올리기"
+                                    >+</button>
+                                </div>
+                                <label className="text-xs opacity-80">G</label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={10000}
+                                    value={gold}
+                                    onChange={(e) => setGold(Math.min(10000, Math.max(0, Number(e.target.value) || 0)))}
+                                    className="w-20 px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs"
+                                    title="골드 설정 (최대 10000)"
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -555,6 +915,12 @@ export default function TFTShop() {
                                                     ) : null
                                                 );
                                             })()}
+                                            {/* Wanted badge (top-left) */}
+                                            {wanted.has((c as Unit).key) && (
+                                                <div className="absolute top-1 left-1 z-40 px-1.5 py-0.5 text-[10px] rounded bg-pink-500 text-black ring-1 ring-white/20">
+                                                    원하는
+                                                </div>
+                                            )}
                                             <div className="relative flex-1">
                                                 <Image src={c.img ?? '/garen.jpg'} alt={c.name} fill
                                                        className="object-cover"/>

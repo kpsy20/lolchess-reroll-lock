@@ -29,8 +29,8 @@ export const PER_UNIT_POOL: Record<number, number> = {
 // Minimal roster – replace/expand freely
 export const ROSTER: Record<number, BaseUnit[]> = {
     1: [
-        {key: "Syndra", name: "신드라", traits: ["수정 갬빗", "별수호자", "신동"], color: "bg-emerald-500", img: "/syndra.jpg"},
-        {key: "Rell", name: "렐", traits: ["별수호자", "요새"], color: "bg-emerald-500", img: "/rell.jpg"},
+        {key: "Syndra", name: "신드라", traits: ["수정 갬빗", "별 수호자", "신동"], color: "bg-emerald-500", img: "/syndra.jpg"},
+        {key: "Rell", name: "렐", traits: ["별 수호자", "요새"], color: "bg-emerald-500", img: "/rell.jpg"},
         {key: "Gnar", name: "나르", traits: ["프로레슬러", "저격수"], color: "bg-emerald-500", img: "/gnar.jpg"},
         {key: "Sivir", name: "시비르", traits: ["크루", "저격수"], color: "bg-emerald-500", img: "/sivir.jpg"},
         {key: "Kennen", name: "케넨", traits: ["슈프림 셀", "봉쇄자", "마법사"], color: "bg-emerald-500", img: "/kennen.jpg"},
@@ -57,7 +57,7 @@ export const ROSTER: Record<number, BaseUnit[]> = {
         {key: "Lux", name: "럭스", traits: ["소울 파이터", "마법사"], color: "bg-sky-500", img: "/lux.jpg"},
         {key: "DrMundo", name: "문도 박사", traits: ["프로레슬러", "전쟁기계"], color: "bg-sky-500", img: "/drmundo.jpg"},
         {key: "XinZhao", name: "신 짜오", traits: ["소울 파이터", "요새"], color: "bg-sky-500", img: "/xinzhao.jpg"},
-        {key: "Katarina", name: "카타리나", traits: ["전투사관학교", "암살자"], color: "bg-sky-500", img: "/katarina.jpg"},
+        {key: "Katarina", name: "카타리나", traits: ["전투사관학교", "처형자"], color: "bg-sky-500", img: "/katarina.jpg"},
     ],
     3: [
         {key: "Neeko", name: "니코", traits: ["별 수호자", "봉쇄자"], color: "bg-violet-500", img: "/neeko.jpg"},
@@ -127,3 +127,54 @@ export const COST_BG: Record<number, string> = {
 
 export const STORAGE_KEY = "tft-reroll-bar-v1";
 export const BENCH_SIZE = 10;
+
+// ---- Trait breakpoints & styling ----
+// 각 트레이트의 발동 카운트(브론즈/실버/골드)를 정의
+export const TRAIT_BREAKPOINTS: Record<string, number[]> = {
+  "별 수호자": [2, 3, 6],
+  "수정 갬빗": [3, 5, 7],
+  "결투가": [2, 4, 6],
+  "마법사": [2, 4, 6],
+  "봉쇄자": [2, 4, 6],
+  "격투가": [2, 4, 6],
+  "슈프림 셀": [2, 3, 4],
+  "소울 파이터": [2, 4, 8],
+  "멘토": [1, 4],
+  "악령": [2, 4, 6],
+  "전투사관학교": [3, 5, 7],
+  "프로레슬러": [2, 4],
+  "거대 메크": [3, 5, 7],
+  "처형자": [2, 3, 5],
+  "이단아": [2, 4, 6],
+  "저격수": [2, 3, 5],
+  "헤비급": [2, 4, 6],
+  "전쟁기계": [2, 4, 6],
+  "책략가": [2, 3, 4],
+  "요새": [2, 4, 6],
+  "신동": [2, 3, 5],
+  // 누락했을 수 있는 일반 트레이트들
+  "크루": [2, 4],
+  "괴물 트레이너": [1],
+};
+
+// 5코스트 유닛 전용 고유 트레이트(등장만 해도 골드 취급)
+export const GOLD_ALWAYS_TRAITS = new Set<string>([
+  "장미 어머니",
+  "해적선장",
+  "레슬링 챔피언",
+  "텐색의 대가",
+  // 요청에 따라 "괴물 트레이너"도 동일 규칙 적용
+  "괴물 트레이너",
+]);
+
+// Visual style classes for breakpoint chips
+export const BP_TIER_CLASS: Record<'bronze' | 'silver' | 'gold', {on: string; off: string}> = {
+  bronze: { on: 'text-amber-300', off: 'text-amber-300/40' },
+  silver: { on: 'text-slate-100', off: 'text-slate-300/40' },
+  gold:   { on: 'text-yellow-300', off: 'text-yellow-300/40' },
+};
+
+// For traits that want a custom displayed range (e.g., 별수호자 wants 1..10)
+export const TRAIT_DISPLAY_RANGE: Record<string, number[]> = {
+  '별수호자': Array.from({ length: 10 }, (_, i) => i + 1),
+};
