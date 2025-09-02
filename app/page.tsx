@@ -1,303 +1,14 @@
 'use client';
 import React, {useCallback, useEffect, useMemo, useState} from "react";
 import Image from 'next/image';
-
-type BaseUnit = {
-    key: string;
-    name: string;
-    traits: string[];
-    color: string;
-    img?: string;
-};
-
-type Unit = BaseUnit & {
-    cost: number;
-    star: number; // 1성, 2성, 3성
-};
-
-// ---- Helpers ----
-const clx = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ");
-const coins = (n: number) => n.toLocaleString();
-
-// XP needed per level (roughly TFT-like but simplified)
-const XP_REQ = {3: 6, 4: 10, 5: 20, 6: 36, 7: 48, 8: 76, 9: 84, 10: 0};
-
-// Shop odds by level (sum to 100)
-const ODDS: Record<number, number[]> = {
-    1: [100, 0, 0, 0, 0],
-    2: [100, 0, 0, 0, 0],
-    3: [75, 25, 0, 0, 0],
-    4: [55, 30, 15, 0, 0],
-    5: [45, 33, 20, 2, 0],
-    6: [30, 40, 25, 5, 0],
-    7: [19, 30, 40, 10, 1],
-    8: [17, 24, 32, 24, 3],
-    9: [15, 18, 25, 30, 12],
-    10: [5, 10, 20, 40, 25],
-};
-
-// Minimal roster – replace/expand freely
-const ROSTER: Record<number, BaseUnit[]> = {
-    1: [
-        {key: "Syndra", name: "신드라", traits: ["수정 갬빗", "별수호자", "신동"], color: "bg-emerald-500", img: "/syndra.jpg"},
-        {key: "Rell", name: "렐", traits: ["별수호자", "요새"], color: "bg-emerald-500", img: "/rell.jpg"},
-        {key: "Gnar", name: "나르", traits: ["프로레슬러", "저격수"], color: "bg-emerald-500", img: "/gnar.jpg"},
-        {key: "Sivir", name: "시비르", traits: ["크루", "저격수"], color: "bg-emerald-500", img: "/sivir.jpg"},
-        {key: "Kennen", name: "케넨", traits: ["슈프림 셀", "봉쇄자", "마법사"], color: "bg-emerald-500", img: "/kennen.jpg"},
-        {key: "Malphite", name: "말파이트", traits: ["크루", "봉쇄자"], color: "bg-emerald-500", img: "/malphite.jpg"},
-        {key: "Aatrox", name: "아트록스", traits: ["거대 메크", "전쟁기계", "헤비급"], color: "bg-emerald-500", img: "/aatrox.jpg"},
-        {key: "Ezreal", name: "이즈리얼", traits: ["전투사관학교", "신동"], color: "bg-emerald-500", img: "/ezreal.jpg"},
-        {key: "Garen", name: "가렌", traits: ["전투사관학교", "요새"], color: "bg-emerald-500", img: "/garen.jpg"},
-        {key: "Kayle", name: "케일", traits: ["악령", "격투가"], color: "bg-emerald-500", img: "/kayle.jpg"},
-        {key: "Naafiri", name: "나피리", traits: ["소울 파이터", "전쟁기계"], color: "bg-emerald-500", img: "/naafiri.jpg"},
-        {key: "Zac", name: "자크", traits: ["악령", "헤비급"], color: "bg-emerald-500", img: "/zac.jpg"},
-        {key: "Lucian", name: "루시안", traits: ["거대 메크", "마법사"], color: "bg-emerald-500", img: "/lucian.jpg"},
-        {key: "Kalista", name: "칼리스타", traits: ["소울 파이터", "처형자"], color: "bg-emerald-500", img: "/kalista.jpg"},
-    ],
-    2: [
-        {key: "Kobuko", name: "코부코", traits: ["멘토", "헤비급"], color: "bg-sky-500", img: "/kobuko.jpg"},
-        {key: "Janna", name: "잔나", traits: ["수정 갬빗", "봉쇄자", "책략가"], color: "bg-sky-500", img: "/janna.jpg"},
-        {key: "Xayah", name: "자야", traits: ["별 수호자", "이단아"], color: "bg-sky-500", img: "/xayah.jpg"},
-        {key: "Vi", name: "바이", traits: ["수정 갬빗", "전쟁기계"], color: "bg-sky-500", img: "/vi.jpg"},
-        {key: "Rakan", name: "라칸", traits: ["전투사관학교", "봉쇄자"], color: "bg-sky-500", img: "/rakan.jpg"},
-        {key: "Jhin", name: "진", traits: ["악령", "저격수"], color: "bg-sky-500", img: "/jhin.jpg"},
-        {key: "KaiSa", name: "카이사", traits: ["슈프림 셀", "격투가"], color: "bg-sky-500", img: "/kaisa.jpg"},
-        {key: "Gangplank", name: "갱플랭크", traits: ["거대 메크", "격투가"], color: "bg-sky-500", img: "/gangplank.jpg"},
-        {key: "Shen", name: "쉔", traits: ["크루", "요새", "이단아"], color: "bg-sky-500", img: "/shen.jpg"},
-        {key: "Lux", name: "럭스", traits: ["소울 파이터", "마법사"], color: "bg-sky-500", img: "/lux.jpg"},
-        {key: "DrMundo", name: "문도 박사", traits: ["프로레슬러", "전쟁기계"], color: "bg-sky-500", img: "/drmundo.jpg"},
-        {key: "XinZhao", name: "신 짜오", traits: ["소울 파이터", "요새"], color: "bg-sky-500", img: "/xinzhao.jpg"},
-        {key: "Katarina", name: "카타리나", traits: ["전투사관학교", "암살자"], color: "bg-sky-500", img: "/katarina.jpg"},
-    ],
-    3: [
-        {key: "Neeko", name: "니코", traits: ["별 수호자", "봉쇄자"], color: "bg-violet-500", img: "/neeko.jpg"},
-        {key: "Ahri", name: "아리", traits: ["별 수호자", "마법사"], color: "bg-violet-500", img: "/ahri.jpg"},
-        {key: "Senna", name: "세나", traits: ["거대 메크", "처형자"], color: "bg-violet-500", img: "/senna.jpg"},
-        {key: "Udyr", name: "우디르", traits: ["멘토", "전쟁기계", "격투가"], color: "bg-violet-500", img: "/udyr.jpg"},
-        {key: "Swain", name: "스웨인", traits: ["수정 갬빗", "요새", "마법사"], color: "bg-violet-500", img: "/swain.jpg"},
-        {key: "Yasuo", name: "야스오", traits: ["멘토", "이단아"], color: "bg-violet-500", img: "/yasuo.jpg"},
-        {key: "Ziggs", name: "직스", traits: ["크루", "책략가"], color: "bg-violet-500", img: "/ziggs.jpg"},
-        {key: "Malzahar", name: "말자하", traits: ["악령", "신동"], color: "bg-violet-500", img: "/malzahar.jpg"},
-        {key: "Darius", name: "다리우스", traits: ["슈프림 셀", "헤비급"], color: "bg-violet-500", img: "/darius.jpg"},
-        {key: "Viego", name: "비에고", traits: ["소울 파이터", "격투가"], color: "bg-violet-500", img: "/viego.jpg"},
-        {key: "Caitlyn", name: "케이틀린", traits: ["전투사관학교", "저격수"], color: "bg-violet-500", img: "/caitlyn.jpg"},
-        {key: "Jayce", name: "제이스", traits: ["전투사관학교", "헤비급"], color: "bg-violet-500", img: "/jayce.jpg"},
-        {key: "Lulu", name: "룰루", traits: ["괴물 트레이너"], color: "bg-violet-500", img: "/lulu.jpg"},
-    ],
-    4: [
-        {key: "JarvanIV", name: "자르반 4세", traits: ["거대 메크", "책략가"], color: "bg-amber-500", img: "/jarvaniv.jpg"},
-        {key: "Ryze", name: "라이즈", traits: ["멘토", "처형자", "책략가"], color: "bg-amber-500", img: "/ryze.jpg"},
-        {key: "Jinx", name: "징크스", traits: ["별 수호자", "저격수"], color: "bg-amber-500", img: "/jinx.jpg"},
-        {key: "KSante", name: "크산테", traits: ["악령", "봉쇄자"], color: "bg-amber-500", img: "/ksante.jpg"},
-        {key: "Akali", name: "아칼리", traits: ["슈프림 셀", "처형자"], color: "bg-amber-500", img: "/akali.jpg"},
-        {key: "Poppy", name: "뽀삐", traits: ["별 수호자", "헤비급"], color: "bg-amber-500", img: "/poppy.jpg"},
-        {key: "Ashe", name: "애쉬", traits: ["수정 갬빗", "격투가"], color: "bg-amber-500", img: "/ashe.jpg"},
-        {key: "Yuumi", name: "유미", traits: ["전투사관학교", "신동"], color: "bg-amber-500", img: "/yuumi.jpg"},
-        {key: "Leona", name: "레오나", traits: ["전투사관학교", "요새"], color: "bg-amber-500", img: "/leona.jpg"},
-        {key: "Sett", name: "세트", traits: ["소울 파이터", "전쟁기계"], color: "bg-amber-500", img: "/sett.jpg"},
-        {key: "Volibear", name: "볼리베어", traits: ["프로레슬러", "이단아"], color: "bg-amber-500", img: "/volibear.jpg"},
-        {key: "Karma", name: "카르마", traits: ["거대 메크", "마법사"], color: "bg-amber-500", img: "/karma.jpg"},
-        {key: "Samira", name: "사미라", traits: ["소울 파이터", "이단아"], color: "bg-amber-500", img: "/samira.jpg"},
-    ],
-    5: [
-        {key: "Zyra", name: "자이라", traits: ["수정 갬빗", "장미 어머니"], color: "bg-yellow-400", img: "/zyra.jpg"},
-        {
-            key: "TwistedFate",
-            name: "트위스티드 페이트",
-            traits: ["해적선장", "크루"],
-            color: "bg-yellow-400",
-            img: "/twistedfate.jpg"
-        },
-        {key: "Braum", name: "브라움", traits: ["레슬링 챔피언", "프로레슬러", "요새"], color: "bg-yellow-400", img: "/braum.jpg"},
-        {key: "LeeSin", name: "리 신", traits: ["텐색의 대가"], color: "bg-yellow-400", img: "/leesin.jpg"},
-        {key: "Varus", name: "바루스", traits: ["악령", "저격수"], color: "bg-yellow-400", img: "/varus.jpg"},
-        {key: "Seraphine", name: "세라핀", traits: ["별 수호자", "신동"], color: "bg-yellow-400", img: "/seraphine.jpg"},
-        {key: "Yone", name: "요네", traits: ["거대 메크", "이단아"], color: "bg-yellow-400", img: "/yone.jpg"},
-        {key: "Gwen", name: "그웬", traits: ["소울 파이터", "마법사"], color: "bg-yellow-400", img: "/gwen.jpg"},
-    ],
-};
-
-const COST_COLORS: Record<number, string> = {
-    1: "ring-gray-400",   // 1-cost: gray
-    2: "ring-lime-400",   // 2-cost: light green
-    3: "ring-blue-400",   // 3-cost: blue
-    4: "ring-purple-400", // 4-cost: purple
-    5: "ring-orange-400", // 5-cost: orange
-};
-
-const COST_TEXT: Record<number, string> = {
-    1: "text-gray-400",
-    2: "text-lime-400",
-    3: "text-blue-400",
-    4: "text-purple-400",
-    5: "text-orange-400",
-};
-
-const COST_BG: Record<number, string> = {
-    1: "bg-gray-600",
-    2: "bg-lime-600",
-    3: "bg-blue-600",
-    4: "bg-purple-600",
-    5: "bg-orange-600",
-};
-
-const STORAGE_KEY = "tft-reroll-bar-v1";
-const BENCH_SIZE = 10;
-
-function pickWeighted(odds: number[]): number {
-    const r = Math.random() * 100;
-    let acc = 0;
-    for (let i = 0; i < odds.length; i++) {
-        acc += odds[i];
-        if (r < acc) return i + 1; // cost tier 1..5
-    }
-    return 5;
-}
-
-function randomUnit(cost: number): BaseUnit {
-    const pool = ROSTER[cost];
-    return pool[Math.floor(Math.random() * pool.length)];
-}
-
-function makeShop(level: number): (Unit | null)[] {
-    const odds = ODDS[level] || ODDS[3];
-    return new Array(5).fill(0).map(() => {
-        const cost = pickWeighted(odds);
-        return {...randomUnit(cost), cost, star: 1};
-    });
-}
-
-function normalizeStar(u: Unit | null): Unit | null {
-    if (!u) return u;
-    return {...u, star: u.star ?? 1} as Unit;
-}
-
-function cloneUnits(arr: (Unit | null)[]): (Unit | null)[] {
-    return arr.map((u) => (u ? {...u} : null));
-}
-
-// --- Merge prediction helpers ---
-function maxStarForKeyAcross(key: string, board: (Unit | null)[], bench: (Unit | null)[]) {
-    let m = 0;
-    for (const u of board) if (u && u.key === key) m = Math.max(m, u.star ?? 1);
-    for (const u of bench) if (u && u.key === key) m = Math.max(m, u.star ?? 1);
-    return m;
-}
-
-function countByStarForKey(key: string, board: (Unit | null)[], bench: (Unit | null)[]) {
-    let s1 = 0, s2 = 0, s3 = 0;
-    for (const u of board) if (u && u.key === key) {
-        const st = u.star ?? 1; if (st === 1) s1++; else if (st === 2) s2++; else if (st >= 3) s3++;
-    }
-    for (const u of bench) if (u && u.key === key) {
-        const st = u.star ?? 1; if (st === 1) s1++; else if (st === 2) s2++; else if (st >= 3) s3++;
-    }
-    return { s1, s2, s3 };
-}
-
-function simulateBuyAndMerge(target: BaseUnit, board: (Unit | null)[], bench: (Unit | null)[]) {
-    // Always simulate by adding one 1★ copy, even if bench is full.
-    const added: Unit = { ...(target as Unit), cost: (target as any).cost ?? 1, star: 1 } as Unit;
-    let nextBench: (Unit | null)[];
-    const empty = bench.findIndex((s) => s === null);
-    if (empty !== -1) {
-        nextBench = bench.map((cell, i) => (i === empty ? added : cell));
-    } else {
-        // append a virtual slot to allow immediate merge; we'll normalize length after merge
-        nextBench = [...bench, added];
-    }
-    const merged = mergeAllUnits(board, nextBench);
-    // normalize bench length back to BENCH_SIZE by packing non-nulls left then padding with nulls
-    const packed = merged.bench.filter(Boolean) as Unit[];
-    const normalizedBench: (Unit | null)[] = [...packed.slice(0, BENCH_SIZE), ...Array(Math.max(0, BENCH_SIZE - packed.length)).fill(null)];
-    return { board: merged.board, bench: normalizedBench };
-}
-
-function getSellGold(u: Unit): number {
-    const star = u.star ?? 1;
-    if (u.cost === 1) {
-        // 1-cost: 1★=1, 2★=3, 3★=9
-        if (star === 1) return 1;
-        if (star === 2) return 3;
-        return 9; // star 3
-    }
-    // 2~5 cost: sell = (cost * multiplier) - 1, where multiplier = 1,3,9 by star
-    const mult = star === 1 ? 1 : star === 2 ? 3 : 9;
-    return (u.cost * mult) - 1;
-}
-
-function mergeAllUnits(boardArr: (Unit | null)[], benchArr: (Unit | null)[]) {
-    const board = cloneUnits(boardArr).map(normalizeStar);
-    const bench = cloneUnits(benchArr).map(normalizeStar);
-
-    // helper to get indices for a given key and star
-    const indicesBy = (arr: (Unit | null)[], key: string, star: number) =>
-        arr.map((u, i) => (u && u.key === key && (u.star ?? 1) === star ? i : -1)).filter((i) => i !== -1);
-
-    // Merge pass for a given star: 1★→2★, then 2★→3★
-    const mergeStar = (star: number) => {
-        // collect all candidate keys at this star present on board or bench
-        const keys = new Set<string>();
-        for (const u of board) if (u && (u.star ?? 1) === star) keys.add(u.key);
-        for (const u of bench) if (u && (u.star ?? 1) === star) keys.add(u.key);
-
-        keys.forEach((key) => {
-            while (true) {
-                // fresh indices each loop so we account for previous edits
-                let bIdxs = indicesBy(board, key, star);
-                let tIdxs = indicesBy(bench, key, star);
-                const total = bIdxs.length + tIdxs.length;
-                if (total < 3) break;
-
-                // number of promotions available right now
-                const promos = Math.floor(total / 3);
-                // do exactly one promotion per loop iteration
-
-                // choose target: prefer board lowest index; otherwise bench lowest index
-                let targetFrom: 'board' | 'bench';
-                let targetIdx: number;
-                if (bIdxs.length > 0) {
-                    targetFrom = 'board';
-                    targetIdx = bIdxs[0];
-                    // remove chosen from list
-                    bIdxs = bIdxs.slice(1);
-                } else {
-                    targetFrom = 'bench';
-                    targetIdx = tIdxs[0];
-                    tIdxs = tIdxs.slice(1);
-                }
-
-                // pick two to remove: prefer bench (leftmost), then board (leftmost)
-                const toRemove: Array<{ from: 'board' | 'bench'; idx: number }> = [];
-                while (toRemove.length < 2 && tIdxs.length > 0) toRemove.push({from: 'bench', idx: tIdxs.shift()!});
-                while (toRemove.length < 2 && bIdxs.length > 0) toRemove.push({from: 'board', idx: bIdxs.shift()!});
-                if (toRemove.length < 2) break; // safety
-
-                // apply removals
-                for (const r of toRemove) {
-                    if (r.from === 'bench') bench[r.idx] = null; else board[r.idx] = null;
-                }
-
-                // apply promotion
-                if (targetFrom === 'board') {
-                    const u = board[targetIdx];
-                    if (u) board[targetIdx] = {...u, star: (u.star ?? 1) + 1};
-                } else {
-                    const u = bench[targetIdx];
-                    if (u) bench[targetIdx] = {...u, star: (u.star ?? 1) + 1};
-                }
-
-                // continue loop to see if another set of 3 exists
-                // (since we only did one promotion this iteration)
-            }
-        });
-    };
-
-    mergeStar(1);
-    mergeStar(2);
-
-    return {board, bench};
-}
+import type {Unit} from "./lib/types";
+import {
+    XP_REQ, ODDS, COST_COLORS, COST_TEXT, COST_BG, STORAGE_KEY, BENCH_SIZE
+} from "./lib/constants";
+import {
+    clx, coins, makeShop, normalizeStar, mergeAllUnits, maxStarForKeyAcross,
+    simulateBuyAndMerge, getSellGold, countByStarForKey
+} from "./lib/utils";
 
 export default function TFTShop() {
     const [gold, setGold] = useState(999);
@@ -416,7 +127,7 @@ export default function TFTShop() {
             nextBoard = sim.board;
         } else {
             // normal path: place to first empty bench then merge
-            const tmpBench = bench.map((cell, i) => (i === empty ? { ...card, star: 1 } : cell));
+            const tmpBench = bench.map((cell, i) => (i === empty ? {...card, star: 1} : cell));
             const merged = mergeAllUnits(board, tmpBench);
             nextBench = merged.bench;
             nextBoard = merged.board;
@@ -458,8 +169,12 @@ export default function TFTShop() {
     // Owned keys (for highlighting shop cards)
     const ownedKeys = useMemo(() => {
         const s = new Set<string>();
-        bench.forEach((u) => { if (u) s.add(u.key); });
-        board.forEach((u) => { if (u) s.add(u.key); });
+        bench.forEach((u) => {
+            if (u) s.add(u.key);
+        });
+        board.forEach((u) => {
+            if (u) s.add(u.key);
+        });
         return s;
     }, [bench, board]);
 
@@ -612,7 +327,7 @@ export default function TFTShop() {
     }, [reroll, buyXP, placeFromBench, returnToBench, hover, sellAt, bench, board]);
 
     const getPromoStarBadge = useCallback((unit: Unit): 0 | 2 | 3 => {
-        const { s1, s2, s3 } = countByStarForKey(unit.key, board, bench);
+        const {s1, s2, s3} = countByStarForKey(unit.key, board, bench);
         if (s3 > 0) return 0; // already 3★ owned – no badge
         // User rule: show 3★ if we currently have two 2★ and two 1★
         if (s2 >= 2 && s1 >= 2) return 3;
@@ -803,20 +518,26 @@ export default function TFTShop() {
                                     }}
                                 >
                                     {c && ownedKeys.has(c.key) && (
-                                        <div className="pointer-events-none absolute inset-0 rounded-xs bright-pulse z-30">
-                                            <div className="absolute inset-0 bg-white/22" />
-                                            <div className="absolute inset-0 ring-2 ring-yellow-300/70 shadow-[0_0_12px_rgba(234,179,8,0.65)] rounded-xs" />
+                                        <div
+                                            className="pointer-events-none absolute inset-0 rounded-xs bright-pulse z-30">
+                                            <div className="absolute inset-0 bg-white/22"/>
+                                            <div
+                                                className="absolute inset-0 ring-2 ring-yellow-300/70 shadow-[0_0_12px_rgba(234,179,8,0.65)] rounded-xs"/>
                                         </div>
                                     )}
                                     {c ? (
                                         <>
-                                            {(() => { const promo = getPromoStarBadge(c as Unit); return (
-                                                promo ? (
-                                                    <div className="absolute top-1 right-1 z-40 px-1.5 py-0.5 text-[10px] rounded bg-amber-500 text-black ring-1 ring-white/20">
-                                                        {promo === 2 ? '★★' : '★★★'}
-                                                    </div>
-                                                ) : null
-                                            ); })()}
+                                            {(() => {
+                                                const promo = getPromoStarBadge(c as Unit);
+                                                return (
+                                                    promo ? (
+                                                        <div
+                                                            className="absolute top-1 right-1 z-40 px-1.5 py-0.5 text-[10px] rounded bg-amber-500 text-black ring-1 ring-white/20">
+                                                            {promo === 2 ? '★★' : '★★★'}
+                                                        </div>
+                                                    ) : null
+                                                );
+                                            })()}
                                             <div className="relative flex-1">
                                                 <Image src={c.img ?? '/garen.jpg'} alt={c.name} fill
                                                        className="object-cover"/>
@@ -861,13 +582,22 @@ export default function TFTShop() {
                 )}
             </div>
             <style jsx>{`
-@keyframes brightPulse {
-  0% { opacity: 0; }
-  50% { opacity: 1; }
-  100% { opacity: 0; }
-}
-.bright-pulse { animation: brightPulse 1.2s ease-in-out infinite; }
-`}</style>
+                @keyframes brightPulse {
+                    0% {
+                        opacity: 0;
+                    }
+                    50% {
+                        opacity: 1;
+                    }
+                    100% {
+                        opacity: 0;
+                    }
+                }
+
+                .bright-pulse {
+                    animation: brightPulse 1.2s ease-in-out infinite;
+                }
+            `}</style>
         </div>
     );
 }
