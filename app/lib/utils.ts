@@ -1,5 +1,5 @@
 import type { BaseUnit, Unit } from "./types";
-import { ODDS, ROSTER, BENCH_SIZE } from "./constants";
+import { ODDS, ROSTER, BENCH_SIZE, PER_UNIT_POOL } from "./constants";
 
 // ---- Helpers ----
 export const clx = (...xs: Array<string | false | null | undefined>) =>
@@ -16,17 +16,51 @@ export function pickWeighted(odds: number[]): number {
     return 5;
 }
 
-export function randomUnit(cost: number): BaseUnit {
-    const pool = ROSTER[cost];
-    return pool[Math.floor(Math.random() * pool.length)];
+// Count how many "copies" of a specific key are currently owned.
+// 1★ counts as 1, 2★ as 3, 3★ as 9.
+export function copiesOwnedForKey(key: string, board: (Unit | null)[], bench: (Unit | null)[]) {
+  let copies = 0;
+  const acc = (u: Unit | null) => {
+    if (!u || u.key !== key) return 0;
+    const st = u.star ?? 1;
+    return st >= 3 ? 9 : st === 2 ? 3 : 1;
+  };
+  for (const u of board) copies += acc(u);
+  for (const u of bench) copies += acc(u);
+  return copies;
 }
 
-export function makeShop(level: number): (Unit | null)[] {
-    const odds = ODDS[level] || ODDS[3];
-    return new Array(5).fill(0).map(() => {
-        const cost = pickWeighted(odds);
-        return { ...randomUnit(cost), cost, star: 1 };
-    });
+export function hasThreeStarOwned(key: string, board: (Unit | null)[], bench: (Unit | null)[]) {
+  for (const u of board) if (u && u.key === key && (u.star ?? 1) >= 3) return true;
+  for (const u of bench) if (u && u.key === key && (u.star ?? 1) >= 3) return true;
+  return false;
+}
+
+export function poolRemainingFor(key: string, cost: number, board: (Unit | null)[], bench: (Unit | null)[]) {
+  const total = PER_UNIT_POOL[cost] ?? 0;
+  const held = copiesOwnedForKey(key, board, bench);
+  return Math.max(0, total - held);
+}
+
+export function availableUnitsForCost(cost: number, board: (Unit | null)[], bench: (Unit | null)[]) {
+  const pool = ROSTER[cost] ?? [];
+  return pool.filter(u => !hasThreeStarOwned(u.key, board, bench) && poolRemainingFor(u.key, cost, board, bench) > 0);
+}
+
+export function randomUnitWithPools(cost: number, board: (Unit | null)[], bench: (Unit | null)[]) : BaseUnit | null {
+  const avail = availableUnitsForCost(cost, board, bench);
+  if (avail.length === 0) return null;
+  return avail[Math.floor(Math.random() * avail.length)];
+}
+
+// New makeShop that respects pools and 3★ exclusion.
+export function makeShop(level: number, board: (Unit | null)[], bench: (Unit | null)[]): (Unit | null)[] {
+  const odds = ODDS[level] || ODDS[3];
+  return new Array(5).fill(0).map(() => {
+    const cost = pickWeighted(odds);
+    const base = randomUnitWithPools(cost, board, bench);
+    return base ? { ...base, cost, star: 1 } : null;
+  });
 }
 
 export function normalizeStar(u: Unit | null): Unit | null {

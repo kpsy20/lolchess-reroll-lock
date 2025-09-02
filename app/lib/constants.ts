@@ -1,7 +1,7 @@
 import type { BaseUnit } from "./types";
 
 // XP needed per level (roughly TFT-like but simplified)
-export const XP_REQ = {3: 6, 4: 10, 5: 20, 6: 36, 7: 48, 8: 76, 9: 84, 10: 0} as const;
+export const XP_REQ: Record<number, number> = {3: 6, 4: 10, 5: 20, 6: 36, 7: 48, 8: 76, 9: 84, 10: 0} as const;
 
 // Shop odds by level (sum to 100)
 export const ODDS: Record<number, number[]> = {
@@ -15,6 +15,15 @@ export const ODDS: Record<number, number[]> = {
     8: [17, 24, 32, 24, 3],
     9: [15, 18, 25, 30, 12],
     10: [5, 10, 20, 40, 25],
+};
+
+// Per-unit shop pool (number of copies for each unique unit at a given cost)
+export const PER_UNIT_POOL: Record<number, number> = {
+  1: 30,
+  2: 25,
+  3: 18,
+  4: 10,
+  5: 9,
 };
 
 // Minimal roster – replace/expand freely

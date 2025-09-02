@@ -14,9 +14,19 @@ export default function TFTShop() {
     const [gold, setGold] = useState(999);
     const [level, setLevel] = useState(3);
     const [xp, setXp] = useState(0);
-    const [shop, setShop] = useState<(Unit | null)[]>(() => makeShop(3));
+    const [shop, setShop] = useState<(Unit | null)[]>(() => makeShop(3, [], []));
     const [locked, setLocked] = useState(false);
     const [bench, setBench] = useState<(Unit | null)[]>(Array.from({length: BENCH_SIZE}, () => null)); // 10 fixed slots
+
+    // Board: simple 4x7 grid (28 slots)
+    const BOARD_ROWS = 4;
+    const BOARD_COLS = 7;
+    const BOARD_SIZE = BOARD_ROWS * BOARD_COLS;
+    const [board, setBoard] = useState<(Unit | null)[]>(Array.from({length: BOARD_SIZE}, () => null));
+
+    const boardCount = board.reduce((acc, x) => acc + (x ? 1 : 0), 0);
+
+    const firstEmptyBoardIndex = () => board.findIndex((x) => x === null);
 
     // Load/Save
     useEffect(() => {
@@ -27,13 +37,14 @@ export default function TFTShop() {
                 setGold(s.gold ?? 50);
                 setLevel(s.level ?? 5);
                 setXp(s.xp ?? 0);
-                setShop(s.shop ?? makeShop(5));
-                setLocked(!!s.locked);
-                setBench(
-                    Array.from({length: BENCH_SIZE}, (_, i) =>
-                        s.bench && s.bench[i] ? {...s.bench[i], star: s.bench[i].star ?? 1} : null
-                    )
+                // normalize bench first so we can compute a pool-aware shop
+                const benchArr: (Unit | null)[] = Array.from({ length: BENCH_SIZE }, (_, i) =>
+                  s.bench && s.bench[i] ? { ...s.bench[i], star: s.bench[i].star ?? 1 } : null
                 );
+                setBench(benchArr);
+                setLocked(!!s.locked);
+                // use the current board state (initially empty) and benchArr to rebuild shop if none saved
+                setShop(s.shop ?? makeShop(s.level ?? 5, board, benchArr));
             } catch {
             }
         }
@@ -56,8 +67,8 @@ export default function TFTShop() {
     const reroll = useCallback(() => {
         if (!canReroll || locked) return; // locked shop doesn't refresh
         setGold((g) => g - 2);
-        setShop(makeShop(level));
-    }, [canReroll, locked, level]);
+        setShop(makeShop(level, board, bench));
+    }, [canReroll, locked, level, board, bench]);
 
     const buyXP = useCallback(() => {
         if (!canBuyXP) return;
@@ -75,15 +86,6 @@ export default function TFTShop() {
     }, [xp, level, xpReq]);
 
 
-    // Board: simple 4x7 grid (28 slots)
-    const BOARD_ROWS = 4;
-    const BOARD_COLS = 7;
-    const BOARD_SIZE = BOARD_ROWS * BOARD_COLS;
-    const [board, setBoard] = useState<(Unit | null)[]>(Array.from({length: BOARD_SIZE}, () => null));
-
-    const boardCount = board.reduce((acc, x) => acc + (x ? 1 : 0), 0);
-
-    const firstEmptyBoardIndex = () => board.findIndex((x) => x === null);
 
     const placeFromBench = useCallback((benchIdx: number) => {
         if (boardCount >= level) return;
@@ -109,7 +111,6 @@ export default function TFTShop() {
 
     const buyFromShop = useCallback((idx: number) => {
         if (!bench) return;
-        const benchFull = bench.every((s) => s !== null);
         const card = shop[idx];
         if (!card) return;
         const cost = card.cost;
@@ -118,16 +119,17 @@ export default function TFTShop() {
         let nextBench: (Unit | null)[];
         let nextBoard: (Unit | null)[];
         if (empty === -1) {
-            // bench full – allow buy only if it leads to an immediate merge
+            // Bench full – only proceed if buying this card immediately increases its star level via merge
             const before = maxStarForKeyAcross(card.key, board, bench);
             const sim = simulateBuyAndMerge(card, board, bench);
             const after = maxStarForKeyAcross(card.key, sim.board, sim.bench);
-            if (after <= before) return; // cannot merge, so don't buy
+            const canMergeNow = after > before; // 1★->2★ or 2★->3★
+            if (!canMergeNow) return;
             nextBench = sim.bench;
             nextBoard = sim.board;
         } else {
-            // normal path: place to first empty bench then merge
-            const tmpBench = bench.map((cell, i) => (i === empty ? {...card, star: 1} : cell));
+            // Normal path: place on first empty bench slot then merge
+            const tmpBench = bench.map((cell, i) => (i === empty ? { ...card, star: 1 } : cell));
             const merged = mergeAllUnits(board, tmpBench);
             nextBench = merged.bench;
             nextBoard = merged.board;
@@ -141,14 +143,6 @@ export default function TFTShop() {
         setBoard(nextBoard);
         setBench(nextBench);
     }, [gold, shop, bench, board]);
-
-    const sellFromBench = useCallback((idx: number) => {
-        const u = bench[idx];
-        if (!u) return;
-        const sell = getSellGold(u);
-        setGold((g) => g + sell);
-        setBench((b) => b.map((cell, i) => (i === idx ? null : cell)));
-    }, [bench]);
 
     const sellAt = useCallback((where: 'bench' | 'board', idx: number) => {
         if (where === 'bench') {
@@ -510,11 +504,11 @@ export default function TFTShop() {
                                     className={clx(
                                         "relative h-32 rounded-xs ring-2 bg-white/5 overflow-hidden p-0 flex flex-col",
                                         c ? COST_COLORS[c.cost] : "ring-white/10",
-                                        c && gold >= c.cost && !benchIsFull ? "cursor-pointer hover:ring-white/40" : "cursor-default",
+                                        c && gold >= c.cost ? "cursor-pointer hover:ring-white/40" : "cursor-default",
                                         c && ownedKeys.has(c.key) && false
                                     )}
                                     onClick={() => {
-                                        if (c && gold >= c.cost && !benchIsFull) buyFromShop(i);
+                                        if (c && gold >= c.cost) buyFromShop(i);
                                     }}
                                 >
                                     {c && ownedKeys.has(c.key) && (
