@@ -153,14 +153,13 @@ export default function TFTShop() {
         let nextBench: (Unit | null)[];
         let nextBoard: (Unit | null)[];
         if (empty === -1) {
-            // Bench full – allow:
-            // (A) single-buy if it immediately increases star (with 1 virtual copy), or
-            // (B) if not, but another same unit exists in the shop, try double-buy (2 virtual copies).
-            const before = maxStarForKeyAcross(card.key, board, bench);
+            // Use star-count deltas instead of max-star to detect real merges (handles making a 2★ when one already exists)
+            const beforeCnt = countByStarForKey(card.key, board, bench);
             // Try single-buy
             let sim = simulateBuyAndMerge(card, board, bench, 1);
-            let after = maxStarForKeyAcross(card.key, sim.board, sim.bench);
-            if (after > before) {
+            let afterCnt = countByStarForKey(card.key, sim.board, sim.bench);
+            const mergedSingle = (afterCnt.s3 > beforeCnt.s3) || (afterCnt.s2 > beforeCnt.s2);
+            if (mergedSingle) {
                 nextBench = sim.bench;
                 nextBoard = sim.board;
             } else {
@@ -171,8 +170,9 @@ export default function TFTShop() {
                 if (gold < cost * 2) return;
                 // Try double-buy using 2 virtual copies
                 sim = simulateBuyAndMerge(card, board, bench, 2);
-                after = maxStarForKeyAcross(card.key, sim.board, sim.bench);
-                if (after <= before) return; // still cannot merge, abort
+                afterCnt = countByStarForKey(card.key, sim.board, sim.bench);
+                const mergedDouble = (afterCnt.s3 > beforeCnt.s3) || (afterCnt.s2 > beforeCnt.s2);
+                if (!mergedDouble) return; // still cannot merge, abort
                 nextBench = sim.bench;
                 nextBoard = sim.board;
 
