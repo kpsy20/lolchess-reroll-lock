@@ -119,14 +119,37 @@ export default function TFTShop() {
         let nextBench: (Unit | null)[];
         let nextBoard: (Unit | null)[];
         if (empty === -1) {
-            // Bench full – only proceed if buying this card immediately increases its star level via merge
+            // Bench full – allow:
+            // (A) single-buy if it immediately increases star (with 1 virtual copy), or
+            // (B) if not, but another same unit exists in the shop, try double-buy (2 virtual copies).
             const before = maxStarForKeyAcross(card.key, board, bench);
-            const sim = simulateBuyAndMerge(card, board, bench);
-            const after = maxStarForKeyAcross(card.key, sim.board, sim.bench);
-            const canMergeNow = after > before; // 1★->2★ or 2★->3★
-            if (!canMergeNow) return;
-            nextBench = sim.bench;
-            nextBoard = sim.board;
+            // Try single-buy
+            let sim = simulateBuyAndMerge(card, board, bench, 1);
+            let after = maxStarForKeyAcross(card.key, sim.board, sim.bench);
+            if (after > before) {
+                nextBench = sim.bench;
+                nextBoard = sim.board;
+            } else {
+                // Look for another same unit in current shop (excluding this index)
+                const j = shop.findIndex((s, k) => k !== idx && s && s.key === card.key);
+                if (j === -1) return; // cannot proceed; no merge path
+                // Ensure we have enough gold for two copies
+                if (gold < cost * 2) return;
+                // Try double-buy using 2 virtual copies
+                sim = simulateBuyAndMerge(card, board, bench, 2);
+                after = maxStarForKeyAcross(card.key, sim.board, sim.bench);
+                if (after <= before) return; // still cannot merge, abort
+                nextBench = sim.bench;
+                nextBoard = sim.board;
+
+                // Apply both purchases atomically
+                setGold(gold - cost * 2);
+                const nextShopDouble = shop.map((c, k) => (k === idx || k === j ? null : c));
+                setShop(nextShopDouble);
+                setBoard(nextBoard);
+                setBench(nextBench);
+                return; // prevent single-buy finalizers below from running
+            }
         } else {
             // Normal path: place on first empty bench slot then merge
             const tmpBench = bench.map((cell, i) => (i === empty ? { ...card, star: 1 } : cell));

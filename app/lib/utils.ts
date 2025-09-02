@@ -1,5 +1,5 @@
 import type { BaseUnit, Unit } from "./types";
-import { ODDS, ROSTER, BENCH_SIZE, PER_UNIT_POOL } from "./constants";
+import { ODDS, ROSTER, PER_UNIT_POOL } from "./constants";
 
 // ---- Helpers ----
 export const clx = (...xs: Array<string | false | null | undefined>) =>
@@ -161,20 +161,114 @@ export function mergeAllUnits(boardArr: (Unit | null)[], benchArr: (Unit | null)
     return { board, bench };
 }
 
-export function simulateBuyAndMerge(target: BaseUnit, board: (Unit | null)[], bench: (Unit | null)[]) {
-    // Always simulate by adding one 1★ copy, even if bench is full.
-    const added: Unit = { ...(target as Unit), cost: (target as any).cost ?? 1, star: 1 } as Unit;
-    let nextBench: (Unit | null)[];
-    const empty = bench.findIndex((s) => s === null);
-    if (empty !== -1) {
-        nextBench = bench.map((cell, i) => (i === empty ? added : cell));
+export function simulateBuyAndMerge(target: BaseUnit, boardArr: (Unit | null)[], benchArr: (Unit | null)[], addCopies: number = 1) {
+  // Clone shallow and normalize stars; we'll mutate specific indices in place.
+  const board = cloneUnits(boardArr).map(normalizeStar);
+  const bench = cloneUnits(benchArr).map(normalizeStar);
+  const key = target.key;
+
+  // Helpers to find indices of the same key at a given star
+  const indicesBy = (arr: (Unit | null)[], star: number) =>
+    arr.map((u, i) => (u && u.key === key && (u.star ?? 1) === star ? i : -1)).filter((i) => i !== -1);
+
+  // Merge three 1★ into one 2★, using up to `addCopies` virtual 1★ from shop
+  const doStar1Merge = (): boolean => {
+    let onesBoard = indicesBy(board, 1);
+    let onesBench = indicesBy(bench, 1);
+    const totalOnesWithVirtual = onesBoard.length + onesBench.length + Math.max(0, addCopies);
+    if (totalOnesWithVirtual < 3) return false;
+
+    // target prefers board, then bench
+    let targetFrom: 'board' | 'bench' | null = null;
+    let targetIdx = -1;
+    if (onesBoard.length > 0) {
+      targetFrom = 'board';
+      targetIdx = onesBoard[0];
+      onesBoard = onesBoard.slice(1);
+    } else if (onesBench.length > 0) {
+      targetFrom = 'bench';
+      targetIdx = onesBench[0];
+      onesBench = onesBench.slice(1);
     } else {
-        // append a virtual slot to allow immediate merge; we'll normalize length after merge
-        nextBench = [...bench, added];
+      return false;
     }
-    const merged = mergeAllUnits(board, nextBench);
-    // normalize bench length back to BENCH_SIZE by packing non-nulls left then padding with nulls
-    const packed = merged.bench.filter(Boolean) as Unit[];
-    const normalizedBench: (Unit | null)[] = [...packed.slice(0, BENCH_SIZE), ...Array(Math.max(0, BENCH_SIZE - packed.length)).fill(null)];
-    return { board: merged.board, bench: normalizedBench };
+
+    // need two sources: prefer bench ones, then board ones, then virtual
+    const toRemove: Array<{ from: 'board' | 'bench'; idx: number } | 'virtual'> = [];
+    while (toRemove.length < 2 && onesBench.length > 0) toRemove.push({ from: 'bench', idx: onesBench.shift()! });
+    while (toRemove.length < 2 && onesBoard.length > 0) toRemove.push({ from: 'board', idx: onesBoard.shift()! });
+    while (toRemove.length < 2 && addCopies > 0) {
+      toRemove.push('virtual');
+      addCopies -= 1;
+    }
+    if (toRemove.length < 2) return false;
+
+    // consume actual copies
+    for (const r of toRemove) {
+      if (r === 'virtual') continue;
+      if (r.from === 'bench') bench[r.idx] = null; else board[r.idx] = null;
+    }
+
+    // upgrade target in place
+    if (targetFrom === 'board') {
+      const u = board[targetIdx]!;
+      board[targetIdx] = { ...u, star: (u.star ?? 1) + 1 };
+    } else if (targetFrom === 'bench') {
+      const u = bench[targetIdx]!;
+      bench[targetIdx] = { ...u, star: (u.star ?? 1) + 1 };
+    }
+    return true;
+  };
+
+  // Merge three 2★ into one 3★ (no virtual twos; must exist already)
+  const doStar2Merge = (): boolean => {
+    let twosBoard = indicesBy(board, 2);
+    let twosBench = indicesBy(bench, 2);
+    if (twosBoard.length + twosBench.length < 3) return false;
+
+    let targetFrom: 'board' | 'bench' | null = null;
+    let targetIdx = -1;
+    if (twosBoard.length > 0) {
+      targetFrom = 'board';
+      targetIdx = twosBoard[0];
+      twosBoard = twosBoard.slice(1);
+    } else if (twosBench.length > 0) {
+      targetFrom = 'bench';
+      targetIdx = twosBench[0];
+      twosBench = twosBench.slice(1);
+    } else {
+      return false;
+    }
+
+    const toRemove: Array<{ from: 'board' | 'bench'; idx: number }> = [];
+    while (toRemove.length < 2 && twosBench.length > 0) toRemove.push({ from: 'bench', idx: twosBench.shift()! });
+    while (toRemove.length < 2 && twosBoard.length > 0) toRemove.push({ from: 'board', idx: twosBoard.shift()! });
+    if (toRemove.length < 2) return false;
+
+    for (const r of toRemove) {
+      if (r.from === 'bench') bench[r.idx] = null; else board[r.idx] = null;
+    }
+
+    if (targetFrom === 'board') {
+      const u = board[targetIdx]!;
+      board[targetIdx] = { ...u, star: (u.star ?? 1) + 1 };
+    } else if (targetFrom === 'bench') {
+      const u = bench[targetIdx]!;
+      bench[targetIdx] = { ...u, star: (u.star ?? 1) + 1 };
+    }
+    return true;
+  };
+
+  // Try to use virtual 1★ copies (from shop buys) greedily
+  while (addCopies > 0) {
+    const merged = doStar1Merge();
+    if (!merged) break;
+    // after a 1★ merge, see if we can promote to 3★
+    while (doStar2Merge()) {}
+  }
+
+  // Also resolve any remaining natural 2★ merges
+  while (doStar2Merge()) {}
+
+  return { board, bench };
 }
