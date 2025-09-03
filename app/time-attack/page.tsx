@@ -1,5 +1,6 @@
 'use client';
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import type {Unit} from "../lib/types";
 import {
@@ -17,6 +18,7 @@ import ActionShop from './components/ActionShop';
 import Bench from './components/Bench';
 // Preset payload from /setting page
 const TA_PRESET_KEY = 'TA_SELECTED_PRESET';
+const TA_RESULTS_KEY = 'TA_HISTORY_V1';
 
 export default function TFTShop() {
     const [gold, setGold] = useState(0);
@@ -50,6 +52,17 @@ export default function TFTShop() {
     const [countdown, setCountdown] = useState(3); // 3..2..1..0
     const [running, setRunning] = useState(false);
     const [timerSec, setTimerSec] = useState(0);
+
+    // --- Preset targets & result modal ---
+    const [targets, setTargets] = useState<Record<string, number> | null>(null);
+    const [deckName, setDeckName] = useState<string | null>(null);
+    const [showResult, setShowResult] = useState(false);
+
+    // Overlap mode (겹치는 사람 옵션)
+    type OverlapMode = 'none' | 'with';
+    const [overlapMode, setOverlapMode] = useState<OverlapMode>('none');
+
+    const router = useRouter();
 
     // Retry starting BGM on first user gesture (click/keydown)
     useEffect(() => {
@@ -147,9 +160,27 @@ export default function TFTShop() {
             if (Array.isArray(p?.units)) {
                 setWanted(new Set(p.units));
             }
-        } catch {
-        }
+            if (p?.targets && typeof p.targets === 'object') {
+                setTargets(p.targets as Record<string, number>);
+            } else {
+                setTargets(null);
+            }
+            setDeckName(typeof p?.name === 'string' ? p.name : null);
+            const om = p?.overlapMode;
+            if (om === 'none' || om === 'with') setOverlapMode(om);
+        } catch {}
     }, []);
+    // Per-unit pool (cost-based)
+    const [pool, setPool] = useState<Map<string, number>>(() => {
+        const m = new Map<string, number>();
+        const byCost: Record<number, number> = { 1: 30, 2: 25, 3: 18, 4: 10, 5: 9 };
+        (Object.keys(ROSTER) as Array<keyof typeof ROSTER>).forEach((ck) => {
+            const cost = Number(ck);
+            const cnt = byCost[cost] ?? 0;
+            ROSTER[cost].forEach((u) => m.set(u.key, cnt));
+        });
+        return m;
+    });
 
     // Flatten roster for the selector grid (right panel)
     const allUnits = useMemo(() => {
@@ -390,6 +421,10 @@ export default function TFTShop() {
         spent, setSpent,
         playAudio,
         refs: {moveAudioRef, buyAudioRef, sellAudioRef, rerollAudioRef, twoStarAudioRef, threeStarAudioRef, xpAudioRef},
+        overlapMode,
+        wanted,
+        pool,
+        setPool,
     });
 
     // Hotkeys
@@ -431,6 +466,49 @@ export default function TFTShop() {
         return () => window.removeEventListener("keydown", onKey);
     }, [reroll, buyXP, placeFromBench, returnToBench, hover, sellAt, bench, board]);
 
+    useEffect(() => {
+        if (countdown > 0) return; // 아직 시작 전
+        const req: Array<[string, number]> = targets
+            ? Object.entries(targets)
+            : Array.from(wanted).map((k) => [k, 2]); // 기본 목표: 원하는 유닛 전부 2성
+
+        if (req.length === 0) return;
+
+        let ok = true;
+        for (const [k, t] of req) {
+            const m = maxStarForKeyAcross(k, board, bench);
+            if (m < (t || 1)) { ok = false; break; }
+        }
+        if (!ok) return;
+
+        // 완료!
+        setRunning(false);
+        setShowResult(true);
+
+        // 결과 저장 (누적)
+        try {
+            const raw = localStorage.getItem(TA_RESULTS_KEY);
+            const arr = Array.isArray(JSON.parse(raw || '[]')) ? JSON.parse(raw || '[]') : [];
+            arr.push({
+                deck: deckName || '(custom)',
+                spent,
+                timeSec: timerSec,
+                date: new Date().toISOString(),
+                targets: Object.fromEntries(req),
+            });
+            localStorage.setItem(TA_RESULTS_KEY, JSON.stringify(arr));
+        } catch {
+            const arr = [{
+                deck: deckName || '(custom)',
+                spent,
+                timeSec: timerSec,
+                date: new Date().toISOString(),
+                targets: Object.fromEntries(req),
+            }];
+            localStorage.setItem(TA_RESULTS_KEY, JSON.stringify(arr));
+        }
+    }, [board, bench, targets, wanted, countdown, deckName, spent, timerSec]);
+
     const OddsBar = useMemo(
         () => (
             <div className="flex gap-2 text-xs text-white/90">
@@ -451,6 +529,19 @@ export default function TFTShop() {
         [odds]
     );
 
+    const resetRun = useCallback(() => {
+        setShowResult(false);
+        setSpent(0);
+        setTimerSec(0);
+        setCountdown(3);
+        setRunning(false);
+        setLevel(3);
+        setXp(0);
+        setBoard(Array.from({length: BOARD_SIZE}, () => null));
+        setBench(Array.from({length: BENCH_SIZE}, () => null));
+        setShop(makeShop(3, [], []));
+    }, [BOARD_SIZE]);
+
     return (
         <div
             className="w-full min-h-screen bg-slate-900 text-slate-100 flex items-end justify-center p-6"
@@ -460,6 +551,34 @@ export default function TFTShop() {
                     <div className="text-[120px] font-black tracking-tight drop-shadow-2xl">{countdown}</div>
                 </div>
             )}
+
+            {showResult && (
+                <div className="fixed inset-0 z-[120] bg-black/70 grid place-items-center p-4">
+                    <div className="w-full max-w-md rounded-xl bg-slate-800 ring-1 ring-white/10 p-5 shadow-2xl">
+                        <div className="text-lg font-bold mb-3">결과</div>
+                        <div className="space-y-1 text-sm">
+                            <div>덱: <span className="font-semibold">{deckName || '(custom)'}</span></div>
+                            <div>걸린 시간: <span className="font-mono">
+          {String(Math.floor(timerSec/60)).padStart(2,'0')}:{String(Math.floor(timerSec%60)).padStart(2,'0')}
+        </span></div>
+                            <div>쓴 돈: <span className="font-mono">{spent.toLocaleString('en-US')}</span></div>
+                        </div>
+                        <div className="mt-4 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => router.push('/setting')}
+                                className="px-3 py-1.5 rounded-md bg-black/40 ring-1 ring-white/10 hover:bg-black/50"
+                            >덱 고르기</button>
+                            <button
+                                type="button"
+                                onClick={resetRun}
+                                className="px-3 py-1.5 rounded-md bg-indigo-600/80 ring-1 ring-white/10 hover:bg-indigo-600"
+                            >한번 더 하기</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <audio ref={rerollAudioRef} src="/sound/reroll.mp3" preload="auto"/>
             <audio ref={buyAudioRef} src="/sound/buy.mp3" preload="auto"/>
             <audio ref={sellAudioRef} src="/sound/sell.mp3" preload="auto"/>
@@ -474,18 +593,8 @@ export default function TFTShop() {
                 {/* Right Wanted Panel */}
                 <div className="fixed right-4 top-24 z-40 w-48 max-h-[70vh] overflow-auto select-none">
                     {/* Deck name (if coming from setting) */}
-                    <div
-                        className="text-[11px] mb-1 px-2 py-1 rounded bg-black/30 ring-1 ring-white/10 text-white/70 truncate">
-                        {(() => {
-                            try {
-                                const raw = localStorage.getItem(TA_PRESET_KEY);
-                                if (!raw) return null;
-                                const p = JSON.parse(raw);
-                                return p?.name ? `덱: ${p.name}` : null;
-                            } catch {
-                                return null;
-                            }
-                        })()}
+                    <div className="text-[11px] mb-1 px-2 py-1 rounded bg-black/30 ring-1 ring-white/10 text-white/70 truncate">
+                        {deckName ? `덱: ${deckName}` : null}
                     </div>
                     <div
                         className="text-xs mb-2 px-2 py-1 rounded-md bg-black/40 ring-1 ring-white/10 text-white/80">원하는
@@ -664,7 +773,7 @@ export default function TFTShop() {
                       timeAttack
                       timerSec={timerSec}
                       spent={spent}
-                      overlapModeLabel={`겹침: ${'없음'}`}
+                      overlapModeLabel={`겹침: ${overlapMode === 'with' ? '있음' : '없음'}`}
                     />
 
                     {/* Actions + Shop */}

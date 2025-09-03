@@ -33,6 +33,11 @@ export type HandlerDeps = {
     setIsDragging: React.Dispatch<React.SetStateAction<boolean>>;
     spent: number;
     setSpent: React.Dispatch<React.SetStateAction<number>>;
+    // overlap/pool
+    overlapMode?: 'none' | 'with';
+    wanted?: Set<string>;
+    pool?: Map<string, number>;
+    setPool?: React.Dispatch<React.SetStateAction<Map<string, number>>>;
     playAudio: (ref: React.RefObject<HTMLAudioElement | null>, vol?: number) => void;
     refs: {
         moveAudioRef: React.RefObject<HTMLAudioElement | null>;
@@ -56,6 +61,11 @@ export function createHandlers(deps: HandlerDeps) {
         board, setBoard,
         dragSrc, setDragSrc, setIsDragging,
         spent, setSpent,
+        // overlap/pool
+        overlapMode = 'none',
+        wanted = new Set<string>(),
+        pool = new Map<string, number>(),
+        setPool,
         playAudio,
         refs: {moveAudioRef, buyAudioRef, sellAudioRef, rerollAudioRef, twoStarAudioRef, threeStarAudioRef, xpAudioRef},
     } = deps;
@@ -70,7 +80,7 @@ export function createHandlers(deps: HandlerDeps) {
     const reroll = () => {
         if (!canReroll || locked) return;
         setSpent((s) => s + 2);
-        setShop(makeShop(level, board, bench));
+        setShop(makeShop(level, board, bench, pool));
         playAudio(rerollAudioRef);
     };
 

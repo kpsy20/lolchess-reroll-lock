@@ -54,13 +54,71 @@ export function randomUnitWithPools(cost: number, board: (Unit | null)[], bench:
 }
 
 // New makeShop that respects pools and 3★ exclusion.
-export function makeShop(level: number, board: (Unit | null)[], bench: (Unit | null)[]): (Unit | null)[] {
-  const odds = ODDS[level] || ODDS[3];
-  return new Array(5).fill(0).map(() => {
-    const cost = pickWeighted(odds);
-    const base = randomUnitWithPools(cost, board, bench);
-    return base ? { ...base, cost, star: 1 } : null;
-  });
+export function makeShop(level: number, board: (Unit | null)[], bench: (Unit | null)[], pool?: Map<string, number>) {
+    const odds = ODDS[level] || ODDS[3];
+    
+    // 코스트별 가중치 선택 함수
+    const pickCost = (): number => {
+        const r = Math.random() * 100;
+        let acc = 0;
+        for (let i = 0; i < odds.length; i++) {
+            acc += odds[i];
+            if (r < acc) return i + 1; // cost tier 1..5
+        }
+        return 5;
+    };
+
+    // 가중치 기반 랜덤 선택 함수
+    const weightedPick = <T>(arr: T[], weightFn: (item: T) => number): T | null => {
+        if (arr.length === 0) return null;
+        
+        const weights = arr.map(weightFn);
+        const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+        
+        if (totalWeight <= 0) return arr[Math.floor(Math.random() * arr.length)];
+        
+        const r = Math.random() * totalWeight;
+        let acc = 0;
+        
+        for (let i = 0; i < weights.length; i++) {
+            acc += weights[i];
+            if (r < acc) return arr[i];
+        }
+        
+        return arr[arr.length - 1];
+    };
+
+    const shop: (Unit | null)[] = [];
+    
+    for (let s = 0; s < 5; s++) {
+        const cost = pickCost();
+        const group = ROSTER[cost] || [];
+        
+        // 3성 유닛이 이미 있는 경우 제외하고, 풀에 남은 유닛만 필터링
+        const candidates = group.filter(u => {
+            // 이미 3성인 유닛은 제외
+            if (maxStarForKeyAcross(u.key, board, bench) >= 3) return false;
+            
+            // 풀에 남은 유닛 수가 0이면 제외
+            const remaining = poolRemainingFor(u.key, cost, board, bench);
+            return remaining > 0;
+        });
+        
+        if (candidates.length === 0) {
+            shop.push(null);
+            continue;
+        }
+        
+        // 풀에 남은 유닛 수를 가중치로 사용하여 선택
+        const unit = weightedPick(candidates, u => {
+            const remaining = poolRemainingFor(u.key, cost, board, bench);
+            return remaining;
+        });
+        
+        shop.push(unit ? {...unit, star: 1, cost} : null);
+    }
+    
+    return shop;
 }
 
 export function normalizeStar(u: Unit | null): Unit | null {
