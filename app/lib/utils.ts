@@ -99,6 +99,9 @@ export function getSellGold(u: Unit): number {
         return 9;
     }
     const mult = star === 1 ? 1 : star === 2 ? 3 : 9;
+    if (star === 1) {
+        return u.cost
+    }
     return (u.cost * mult) - 1;
 }
 

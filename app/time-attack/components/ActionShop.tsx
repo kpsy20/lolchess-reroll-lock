@@ -33,7 +33,7 @@ export default function ActionShop({
     return (
         <div className="flex gap-3">
             {/* Left Action Buttons */}
-            <div>
+            <div className="w-32">
                 <button
                     onClick={onBuyXP}
                     disabled={!canBuyXP}
@@ -66,10 +66,10 @@ export default function ActionShop({
                         className={clx(
                             'relative h-32 rounded-xs ring-2 bg-white/5 overflow-hidden p-0 flex flex-col',
                             c ? COST_COLORS[c.cost] : 'ring-white/10',
-                            c && gold >= c.cost ? 'cursor-pointer hover:ring-white/40' : 'cursor-default'
+
                         )}
                         onClick={() => {
-                            if (c && gold >= c.cost) onBuyFromShop(i);
+                            onBuyFromShop(i);
                         }}
                     >
                         {/* Owned highlight */}

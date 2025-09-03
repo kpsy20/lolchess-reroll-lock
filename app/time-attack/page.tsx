@@ -10,6 +10,7 @@ import {
     clx, coins, makeShop, normalizeStar, mergeAllUnits, maxStarForKeyAcross,
     simulateBuyAndMerge, getSellGold, countByStarForKey
 } from "../lib/utils";
+import {createHandlers, DragSrc} from './hooks/functions';
 
 import HeaderBar from "./components/HeaderBar"
 import ActionShop from './components/ActionShop';
@@ -18,7 +19,7 @@ import Bench from './components/Bench';
 const TA_PRESET_KEY = 'TA_SELECTED_PRESET';
 
 export default function TFTShop() {
-    const [gold, setGold] = useState(100);
+    const [gold, setGold] = useState(0);
     const [level, setLevel] = useState(3);
     const [xp, setXp] = useState(0);
     const [shop, setShop] = useState<(Unit | null)[]>(() => makeShop(3, [], []));
@@ -33,8 +34,6 @@ export default function TFTShop() {
 
     const boardCount = board.reduce((acc, x) => acc + (x ? 1 : 0), 0);
 
-    const firstEmptyBoardIndex = () => board.findIndex((x) => x === null);
-
     // --- SFX: reroll ---
     const rerollAudioRef = useRef<HTMLAudioElement | null>(null);
     const buyAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -46,6 +45,12 @@ export default function TFTShop() {
     // --- BGM audio ---
     const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
 
+    // --- Time Attack: countdown + timer + spent ---
+    const [spent, setSpent] = useState(0);
+    const [countdown, setCountdown] = useState(3); // 3..2..1..0
+    const [running, setRunning] = useState(false);
+    const [timerSec, setTimerSec] = useState(0);
+
     // Retry starting BGM on first user gesture (click/keydown)
     useEffect(() => {
         const resume = () => {
@@ -53,14 +58,39 @@ export default function TFTShop() {
             if (!el) return;
             el.volume = 0.1;
             if (el.paused) {
-                el.play().catch(() => {});
+                el.play().catch(() => {
+                });
             }
         };
-        window.addEventListener('pointerdown', resume, { once: true });
-        window.addEventListener('keydown', resume, { once: true });
+        window.addEventListener('pointerdown', resume, {once: true});
+        window.addEventListener('keydown', resume, {once: true});
         return () => {
             window.removeEventListener('pointerdown', resume);
             window.removeEventListener('keydown', resume);
+        };
+    }, []);
+
+    useEffect(() => {
+        let t1: any;
+        let t2: any;
+        let startMs = 0;
+        t1 = setInterval(() => {
+            setCountdown((c) => {
+                if (c <= 1) {
+                    clearInterval(t1);
+                    startMs = Date.now();
+                    setRunning(true);
+                    t2 = setInterval(() => {
+                        setTimerSec(Math.floor((Date.now() - startMs) / 1000));
+                    }, 200);
+                    return 0;
+                }
+                return c - 1;
+            });
+        }, 1000);
+        return () => {
+            clearInterval(t1);
+            clearInterval(t2);
         };
     }, []);
 
@@ -71,7 +101,8 @@ export default function TFTShop() {
             el.currentTime = 0;
             el.volume = vol;
             void el.play();
-        } catch {}
+        } catch {
+        }
     };
 
     // Load/Save
@@ -84,8 +115,8 @@ export default function TFTShop() {
                 setLevel(s.level ?? 3);
                 setXp(s.xp ?? 0);
                 // normalize bench first so we can compute a pool-aware shop
-                const benchArr: (Unit | null)[] = Array.from({ length: BENCH_SIZE }, (_, i) =>
-                  s.bench && s.bench[i] ? { ...s.bench[i], star: s.bench[i].star ?? 1 } : null
+                const benchArr: (Unit | null)[] = Array.from({length: BENCH_SIZE}, (_, i) =>
+                    s.bench && s.bench[i] ? {...s.bench[i], star: s.bench[i].star ?? 1} : null
                 );
                 setBench(benchArr);
                 setLocked(!!s.locked);
@@ -116,7 +147,8 @@ export default function TFTShop() {
             if (Array.isArray(p?.units)) {
                 setWanted(new Set(p.units));
             }
-        } catch {}
+        } catch {
+        }
     }, []);
 
     // Flatten roster for the selector grid (right panel)
@@ -124,7 +156,7 @@ export default function TFTShop() {
         const arr: Array<{ key: string; name: string; img?: string; cost: number }> = [];
         (Object.keys(ROSTER) as Array<keyof typeof ROSTER>).forEach((k) => {
             const cost = Number(k);
-            ROSTER[cost].forEach((u) => arr.push({ key: u.key, name: u.name, img: u.img, cost }));
+            ROSTER[cost].forEach((u) => arr.push({key: u.key, name: u.name, img: u.img, cost}));
         });
         // sort by cost asc, then name
         arr.sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
@@ -139,40 +171,10 @@ export default function TFTShop() {
         });
     }, []);
     const benchIsFull = bench.every((slot) => slot !== null);
+    // Derived flags for ActionShop props
+    const canReroll = !locked;
+    const canBuyXP = level < 10;
 
-    // Actions
-    const canReroll = gold >= 2;
-    const canBuyXP = gold >= 4 && level < 10;
-
-    const reroll = useCallback(() => {
-        if (!canReroll || locked) return; // locked shop doesn't refresh
-        setGold((g) => g - 2);
-        setShop(makeShop(level, board, bench));
-        playAudio(rerollAudioRef);
-    }, [canReroll, locked, level, board, bench]);
-
-    const buyXP = useCallback(() => {
-        if (!canBuyXP) return;
-        setGold((g) => g - 4);
-        setXp((v) => v + 4);
-        playAudio(xpAudioRef);
-    }, [canBuyXP]);
-
-    // Level stepper: only allow up/down, resets XP on change
-    const nudgeLevel = useCallback((delta: number) => {
-        setLevel((prev) => {
-            const next = Math.max(1, Math.min(10, prev + delta));
-            if (next !== prev) {
-                setXp(0); // manual level change resets XP
-            }
-            return next;
-        });
-    }, []);
-
-    // Gold adjust helper (clamped)
-    const addGold = useCallback((amt: number) => {
-        setGold((g) => Math.min(10000, Math.max(0, g + amt)));
-    }, []);
 
     useEffect(() => {
         // Level up once threshold reached
@@ -183,117 +185,6 @@ export default function TFTShop() {
         }
     }, [xp, level, xpReq]);
 
-
-
-    const placeFromBench = useCallback((benchIdx: number) => {
-        if (boardCount >= level) return;
-        const idx = firstEmptyBoardIndex();
-        if (idx === -1) return; // no space on board
-        const u = bench[benchIdx];
-        if (!u) return;
-        const nextBoard = board.map((cell, i) => (i === idx ? normalizeStar(u) as Unit : cell));
-        const nextBench = bench.map((cell, i) => (i === benchIdx ? null : cell));
-        const merged = mergeAllUnits(nextBoard, nextBench);
-        setBoard(merged.board);
-        setBench(merged.bench);
-        playAudio(moveAudioRef)
-    }, [bench, board, boardCount, level]);
-
-    const returnToBench = useCallback((boardIdx: number) => {
-        const u = board[boardIdx];
-        if (!u) return;
-        const empty = bench.findIndex((s) => s === null);
-        if (empty === -1) return; // bench full
-        setBench((b) => b.map((cell, i) => (i === empty ? u : cell)));
-        setBoard((bd) => bd.map((cell, i) => (i === boardIdx ? null : cell)));
-        playAudio(moveAudioRef)
-    }, [board, bench]);
-
-    const buyFromShop = useCallback((idx: number) => {
-        if (!bench) return;
-        const card = shop[idx];
-        if (!card) return;
-        const cost = card.cost;
-        if (gold < cost) return;
-        // Take a snapshot BEFORE we mutate anything (used for SFX merge detection)
-        const prevCnt = countByStarForKey(card.key, board, bench);
-        const empty = bench.findIndex((s) => s === null);
-        let nextBench: (Unit | null)[];
-        let nextBoard: (Unit | null)[];
-        if (empty === -1) {
-            // Use star-count deltas instead of max-star to detect real merges (handles making a 2★ when one already exists)
-            let sim = simulateBuyAndMerge(card, board, bench, 1);
-            let afterCnt = countByStarForKey(card.key, sim.board, sim.bench);
-            const mergedSingle = (afterCnt.s3 > prevCnt.s3) || (afterCnt.s2 > prevCnt.s2);
-            if (mergedSingle) {
-                nextBench = sim.bench;
-                nextBoard = sim.board;
-            } else {
-                // Look for another same unit in current shop (excluding this index)
-                const j = shop.findIndex((s, k) => k !== idx && s && s.key === card.key);
-                if (j === -1) return; // cannot proceed; no merge path
-                // Ensure we have enough gold for two copies
-                if (gold < cost * 2) return;
-                // Try double-buy using 2 virtual copies
-                sim = simulateBuyAndMerge(card, board, bench, 2);
-                afterCnt = countByStarForKey(card.key, sim.board, sim.bench);
-                const mergedDouble = (afterCnt.s3 > prevCnt.s3) || (afterCnt.s2 > prevCnt.s2);
-                if (!mergedDouble) return; // still cannot merge, abort
-                nextBench = sim.bench;
-                nextBoard = sim.board;
-
-                // Apply both purchases atomically
-                setGold(gold - cost * 2);
-                const nextShopDouble = shop.map((c, k) => (k === idx || k === j ? null : c));
-                setShop(nextShopDouble);
-                setBoard(nextBoard);
-                setBench(nextBench);
-                // SFX: buy + merge (use the snapshot prevCnt)
-                playAudio(buyAudioRef);
-                const newCntDouble = countByStarForKey(card.key, nextBoard, nextBench);
-                if (newCntDouble.s3 > prevCnt.s3) playAudio(threeStarAudioRef, 1);
-                else if (newCntDouble.s2 > prevCnt.s2) playAudio(twoStarAudioRef, 1);
-                return; // prevent single-buy finalizers below from running
-            }
-        } else {
-            // Normal path: place on first empty bench slot then merge
-            const tmpBench = bench.map((cell, i) => (i === empty ? { ...card, star: 1 } : cell));
-            const merged = mergeAllUnits(board, tmpBench);
-            nextBench = merged.bench;
-            nextBoard = merged.board;
-        }
-
-        const newGold = gold - cost;
-        const nextShop = shop.map((c, i) => (i === idx ? null : c));
-
-        setGold(newGold);
-        setShop(nextShop);
-        setBoard(nextBoard);
-        setBench(nextBench);
-
-        playAudio(buyAudioRef);
-        const afterCnt = countByStarForKey(card.key, nextBoard, nextBench);
-        if (afterCnt.s3 > prevCnt.s3) playAudio(threeStarAudioRef, 1);
-        else if (afterCnt.s2 > prevCnt.s2) playAudio(twoStarAudioRef, 1);
-    }, [gold, shop, bench, board]);
-
-    const sellAt = useCallback((where: 'bench' | 'board', idx: number) => {
-        if (where === 'bench') {
-            const u = bench[idx];
-            if (!u) return;
-            const sell = getSellGold(u);
-            setGold((g) => g + sell);
-            setBench((b) => b.map((cell, i) => (i === idx ? null : cell)));
-            playAudio(sellAudioRef);
-        } else {
-            const u = board[idx];
-            if (!u) return;
-            const sell = getSellGold(u);
-            setGold((g) => g + sell);
-            setBoard((bd) => bd.map((cell, i) => (i === idx ? null : cell)));
-            playAudio(sellAudioRef);
-        }
-    }, [bench, board]);
 
     // Owned keys (for highlighting shop cards)
     const ownedKeys = useMemo(() => {
@@ -310,7 +201,9 @@ export default function TFTShop() {
     // Keys present on board only
     const boardKeySet = useMemo(() => {
         const s = new Set<string>();
-        board.forEach((u) => { if (u) s.add(u.key); });
+        board.forEach((u) => {
+            if (u) s.add(u.key);
+        });
         return s;
     }, [board]);
 
@@ -322,7 +215,7 @@ export default function TFTShop() {
             ROSTER[cost].forEach((u) => {
                 u.traits.forEach((t) => {
                     if (!map.has(t)) map.set(t, []);
-                    map.get(t)!.push({ key: u.key, name: u.name, img: u.img, cost });
+                    map.get(t)!.push({key: u.key, name: u.name, img: u.img, cost});
                 });
             });
         });
@@ -402,7 +295,7 @@ export default function TFTShop() {
 
     // Sorted traits: active (tier != 'none') first, then inactive; sort by unique count desc, then name
     const sortedTraits = useMemo(() => {
-        const rows = traitCounts.map(([trait, cnt]) => ({ trait, cnt, tier: tierForTrait(trait, cnt) }));
+        const rows = traitCounts.map(([trait, cnt]) => ({trait, cnt, tier: tierForTrait(trait, cnt)}));
         rows.sort((a, b) => {
             const aActive = a.tier !== 'none' ? 1 : 0;
             const bActive = b.tier !== 'none' ? 1 : 0;
@@ -449,12 +342,11 @@ export default function TFTShop() {
 
     const tierClass = (tier: TraitTier) =>
         tier === 'gold' ? 'bg-yellow-400/25 ring-yellow-300/60 text-yellow-200' :
-        tier === 'silver' ? 'bg-slate-300/20 ring-slate-200/50 text-slate-100' :
-        tier === 'bronze' ? 'bg-amber-600/25 ring-amber-400/60 text-amber-200' :
-        'bg-black/40 ring-white/10 text-white/80';
+            tier === 'silver' ? 'bg-slate-300/20 ring-slate-200/50 text-slate-100' :
+                tier === 'bronze' ? 'bg-amber-600/25 ring-amber-400/60 text-amber-200' :
+                    'bg-black/40 ring-white/10 text-white/80';
 
     // ---- Drag & Drop state ----
-    type DragSrc = { from: 'bench' | 'board'; index: number } | null;
     const [dragSrc, setDragSrc] = useState<DragSrc>(null);
     const [isDragging, setIsDragging] = useState(false);
 
@@ -466,163 +358,39 @@ export default function TFTShop() {
     const [hoveredTrait, setHoveredTrait] = useState<string | null>(null);
     const grayscaleIf = (cond: boolean) => (cond ? '' : 'grayscale opacity-60');
 
-    const beginDragBench = (index: number) => (e: React.DragEvent) => {
-        if (!bench[index]) return;
-        setDragSrc({from: 'bench', index});
-        setIsDragging(true);
-        e.dataTransfer.effectAllowed = 'move';
-    };
-    const beginDragBoard = (index: number) => (e: React.DragEvent) => {
-        if (!board[index]) return;
-        setDragSrc({from: 'board', index});
-        setIsDragging(true);
-        e.dataTransfer.effectAllowed = 'move';
-    };
-    const endDrag = () => {
-        setIsDragging(false);
-        setDragSrc(null);
-    };
 
-    const allowDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-    };
-
-    // Moves
-    const moveBenchToBoard = (bIdx: number, bdIdx: number) => {
-        if (boardCount >= level) return; // respect level cap
-        if (!bench[bIdx] || board[bdIdx]) return;
-        const u = bench[bIdx]!;
-        const nextBoard = board.map((cell, i) => (i === bdIdx ? normalizeStar(u) as Unit : cell));
-        const nextBench = bench.map((cell, i) => (i === bIdx ? null : cell));
-        const merged = mergeAllUnits(nextBoard, nextBench);
-        setBoard(merged.board);
-        setBench(merged.bench);
-        playAudio(moveAudioRef)
-    };
-    // moveBoardToBench is not used in drop logic, can be omitted or updated if needed
-
-    const clearBoardAt = (idx: number) => setBoard((bd) => bd.map((c, i) => (i === idx ? null : c)));
-    const dropToBoard = (bdIdx: number) => {
-        if (!dragSrc) return;
-        const targetFilled = !!board[bdIdx];
-
-        if (dragSrc.from === 'bench') {
-            const u = bench[dragSrc.index];
-            if (!u) return;
-            if (!targetFilled) {
-                if (boardCount >= level) { endDrag(); return; }
-                // original path into empty board + merge
-                moveBenchToBoard(dragSrc.index, bdIdx);
-                endDrag();
-                return;
-            }
-            // bench -> occupied board : swap without merging
-            const nextBoard = board.map((cell, i) => (i === bdIdx ? (normalizeStar(u) as Unit) : cell));
-            const nextBench = bench.map((cell, i) => (i === dragSrc.index ? board[bdIdx] : cell));
-            setBoard(nextBoard);
-            setBench(nextBench);
-            endDrag();
-            playAudio(moveAudioRef);
-            return;
-        }
-
-        if (dragSrc.from === 'board') {
-            const u = board[dragSrc.index];
-            if (!u) return;
-            if (!targetFilled) {
-                // original path board -> empty board + merge check
-                const nextBoard = board.map((cell, i) => (i === bdIdx ? cell ?? u : i === dragSrc.index ? null : cell));
-                const merged = mergeAllUnits(nextBoard, bench);
-                setBoard(merged.board);
-                setBench(merged.bench);
-                endDrag();
-                playAudio(moveAudioRef);
-                return;
-            }
-            // board -> occupied board : swap without merging
-            const aIdx = dragSrc.index;
-            const bIdx2 = bdIdx;
-            const ua = board[aIdx]!;
-            const ub = board[bIdx2]!;
-            const nextBoard = board.map((cell, i) => (i === aIdx ? ub : i === bIdx2 ? ua : cell));
-            setBoard(nextBoard);
-            endDrag();
-            playAudio(moveAudioRef);
-            return;
-        }
-
-        endDrag();
-        playAudio(moveAudioRef);
-    };
-
-    const dropToBench = (bIdx: number) => {
-        if (!dragSrc) return;
-        const targetFilled = !!bench[bIdx];
-
-        if (dragSrc.from === 'board') {
-            const u = board[dragSrc.index];
-            if (!u) return;
-            if (!targetFilled) {
-                // original path: board -> empty bench then merge
-                const nextBench = bench.map((cell, i) => (i === bIdx ? (normalizeStar(u) as Unit) : cell));
-                const nextBoard = board.map((cell, i) => (i === dragSrc.index ? null : cell));
-                const merged = mergeAllUnits(nextBoard, nextBench);
-                setBench(merged.bench);
-                setBoard(merged.board);
-                endDrag();
-                playAudio(moveAudioRef);
-                return;
-            }
-            // board -> occupied bench : swap, no merge
-            const nextBench = bench.map((cell, i) => (i === bIdx ? (normalizeStar(u) as Unit) : cell));
-            const nextBoard = board.map((cell, i) => (i === dragSrc.index ? bench[bIdx] : cell));
-            setBench(nextBench);
-            setBoard(nextBoard);
-            endDrag();
-            playAudio(moveAudioRef);
-            return;
-        }
-
-        if (dragSrc.from === 'bench') {
-            const u = bench[dragSrc.index];
-            if (!u) return;
-            if (!targetFilled) {
-                // move bench -> empty bench
-                setBench((b) => b.map((cell, i) => (i === dragSrc.index ? null : i === bIdx ? u : cell)));
-                endDrag();
-                playAudio(moveAudioRef);
-                return;
-            }
-            // bench -> occupied bench : swap
-            setBench((b) => b.map((cell, i) => (i === dragSrc.index ? b[bIdx] : i === bIdx ? u : cell)));
-            endDrag();
-            playAudio(moveAudioRef);
-            return;
-        }
-
-        endDrag();
-        playAudio(moveAudioRef);
-    };
-
-    const sellDragged = () => {
-        if (!dragSrc) return;
-        if (dragSrc.from === 'bench') {
-            const u = bench[dragSrc.index];
-            if (!u) return endDrag();
-            setGold((g) => g + getSellGold(u));
-            setBench((b) => b.map((cell, i) => (i === dragSrc.index ? null : cell)));
-            playAudio(moveAudioRef);
-        } else if (dragSrc.from === 'board') {
-            const u = board[dragSrc.index];
-            if (!u) return endDrag();
-            setGold((g) => g + getSellGold(u));
-            clearBoardAt(dragSrc.index);
-            playAudio(moveAudioRef);
-        }
-        endDrag();
-        playAudio(moveAudioRef);
-    };
+    // ---- Handlers (from createHandlers) ----
+    const {
+        reroll,
+        buyXP,
+        nudgeLevel,
+        addGold,
+        placeFromBench,
+        returnToBench,
+        beginDragBench,
+        beginDragBoard,
+        endDrag,
+        allowDrop,
+        dropToBoard,
+        dropToBench,
+        sellDragged,
+        sellAt,
+        buyFromShop,
+        getPromoStarBadge,
+    } = createHandlers({
+        gold, setGold,
+        level, setLevel,
+        xp, setXp,
+        shop, setShop,
+        locked,
+        bench, setBench,
+        board, setBoard,
+        dragSrc, setDragSrc,
+        setIsDragging,
+        spent, setSpent,
+        playAudio,
+        refs: {moveAudioRef, buyAudioRef, sellAudioRef, rerollAudioRef, twoStarAudioRef, threeStarAudioRef, xpAudioRef},
+    });
 
     // Hotkeys
     useEffect(() => {
@@ -663,16 +431,6 @@ export default function TFTShop() {
         return () => window.removeEventListener("keydown", onKey);
     }, [reroll, buyXP, placeFromBench, returnToBench, hover, sellAt, bench, board]);
 
-    const getPromoStarBadge = useCallback((unit: Unit): 0 | 2 | 3 => {
-        const {s1, s2, s3} = countByStarForKey(unit.key, board, bench);
-        if (s3 > 0) return 0; // already 3★ owned – no badge
-        // User rule: show 3★ if we currently have two 2★ and two 1★
-        if (s2 >= 2 && s1 >= 2) return 3;
-        // User rule: show 2★ if we currently have at least two 1★
-        if (s1 >= 2) return 2;
-        return 0;
-    }, [board, bench]);
-
     const OddsBar = useMemo(
         () => (
             <div className="flex gap-2 text-xs text-white/90">
@@ -697,57 +455,68 @@ export default function TFTShop() {
         <div
             className="w-full min-h-screen bg-slate-900 text-slate-100 flex items-end justify-center p-6"
         >
-            <audio ref={rerollAudioRef} src="/sound/reroll.mp3" preload="auto" />
-            <audio ref={buyAudioRef} src="/sound/buy.mp3" preload="auto" />
-            <audio ref={sellAudioRef} src="/sound/sell.mp3" preload="auto" />
-            <audio ref={twoStarAudioRef} src="/sound/2star.mp3" preload="auto" />
-            <audio ref={threeStarAudioRef} src="/sound/3star.mp3" preload="auto" />
-            <audio ref={moveAudioRef} src="/sound/move.mp3" preload="auto" />
-            <audio ref={xpAudioRef} src="/sound/xp.mp3" preload="auto" />
-            <audio ref={bgmAudioRef} src="/sound/bgm_modified.mp3" preload="auto" />
+            {countdown > 0 && (
+                <div className="fixed inset-0 z-[100] bg-black/60 grid place-items-center select-none">
+                    <div className="text-[120px] font-black tracking-tight drop-shadow-2xl">{countdown}</div>
+                </div>
+            )}
+            <audio ref={rerollAudioRef} src="/sound/reroll.mp3" preload="auto"/>
+            <audio ref={buyAudioRef} src="/sound/buy.mp3" preload="auto"/>
+            <audio ref={sellAudioRef} src="/sound/sell.mp3" preload="auto"/>
+            <audio ref={twoStarAudioRef} src="/sound/2star.mp3" preload="auto"/>
+            <audio ref={threeStarAudioRef} src="/sound/3star.mp3" preload="auto"/>
+            <audio ref={moveAudioRef} src="/sound/move.mp3" preload="auto"/>
+            <audio ref={xpAudioRef} src="/sound/xp.mp3" preload="auto"/>
+            <audio ref={bgmAudioRef} src="/sound/bgm_modified.mp3" preload="auto"/>
 
             {/* Left Trait Panel (board-only) */}
             <div className="fixed left-4 top-24 z-40 w-44 select-none">
-            {/* Right Wanted Panel */}
-            <div className="fixed right-4 top-24 z-40 w-48 max-h-[70vh] overflow-auto select-none">
-                {/* Deck name (if coming from setting) */}
-                <div className="text-[11px] mb-1 px-2 py-1 rounded bg-black/30 ring-1 ring-white/10 text-white/70 truncate">
-                    {(() => {
-                        try {
-                            const raw = localStorage.getItem(TA_PRESET_KEY);
-                            if (!raw) return null;
-                            const p = JSON.parse(raw);
-                            return p?.name ? `덱: ${p.name}` : null;
-                        } catch { return null; }
-                    })()}
+                {/* Right Wanted Panel */}
+                <div className="fixed right-4 top-24 z-40 w-48 max-h-[70vh] overflow-auto select-none">
+                    {/* Deck name (if coming from setting) */}
+                    <div
+                        className="text-[11px] mb-1 px-2 py-1 rounded bg-black/30 ring-1 ring-white/10 text-white/70 truncate">
+                        {(() => {
+                            try {
+                                const raw = localStorage.getItem(TA_PRESET_KEY);
+                                if (!raw) return null;
+                                const p = JSON.parse(raw);
+                                return p?.name ? `덱: ${p.name}` : null;
+                            } catch {
+                                return null;
+                            }
+                        })()}
+                    </div>
+                    <div
+                        className="text-xs mb-2 px-2 py-1 rounded-md bg-black/40 ring-1 ring-white/10 text-white/80">원하는
+                        유닛
+                    </div>
+                    <div className="grid grid-cols-5 gap-1">
+                        {allUnits.map((u) => (
+                            <button
+                                key={u.key}
+                                type="button"
+                                onClick={() => toggleWanted(u.key)}
+                                className={clx(
+                                    "relative w-8 h-8 rounded overflow-hidden ring-1",
+                                    wanted.has(u.key) ? "ring-pink-400" : "ring-white/10 opacity-70"
+                                )}
+                                title={u.name}
+                            >
+                                <Image src={u.img ?? '/garen.jpg'} alt={u.name} fill className="object-cover"/>
+                                <div className="absolute bottom-0 right-0 text-[8px] px-0.5 bg-black/70">{u.cost}</div>
+                                {wanted.has(u.key) && (
+                                    <div className="absolute inset-0 ring-2 ring-pink-400/70"/>
+                                )}
+                            </button>
+                        ))}
+                    </div>
                 </div>
-                <div className="text-xs mb-2 px-2 py-1 rounded-md bg-black/40 ring-1 ring-white/10 text-white/80">원하는 유닛</div>
-                <div className="grid grid-cols-5 gap-1">
-                    {allUnits.map((u) => (
-                        <button
-                            key={u.key}
-                            type="button"
-                            onClick={() => toggleWanted(u.key)}
-                            className={clx(
-                                "relative w-8 h-8 rounded overflow-hidden ring-1",
-                                wanted.has(u.key) ? "ring-pink-400" : "ring-white/10 opacity-70"
-                            )}
-                            title={u.name}
-                        >
-                            <Image src={u.img ?? '/garen.jpg'} alt={u.name} fill className="object-cover" />
-                            <div className="absolute bottom-0 right-0 text-[8px] px-0.5 bg-black/70">{u.cost}</div>
-                            {wanted.has(u.key) && (
-                                <div className="absolute inset-0 ring-2 ring-pink-400/70" />
-                            )}
-                        </button>
-                    ))}
-                </div>
-            </div>
                 <div className="flex flex-col gap-1">
                     {traitCounts.length === 0 ? (
                         <div className="px-2 py-1 text-xs text-white/40"></div>
                     ) : (
-                        sortedTraits.map(({ trait, cnt, tier }) => {
+                        sortedTraits.map(({trait, cnt, tier}) => {
                             const val = valueForTrait(trait, cnt);
                             const nums = displayNumbersForTrait(trait);
 
@@ -774,7 +543,8 @@ export default function TFTShop() {
                                     onMouseLeave={() => setHoveredTrait((h) => (h === trait ? null : h))}
                                 >
                                     <div className="flex items-center gap-2 min-w-0">
-                                        <div className="shrink-0 w-5 h-5 rounded bg-black/50 ring-1 ring-white/10 grid place-items-center text-[10px] font-semibold">
+                                        <div
+                                            className="shrink-0 w-5 h-5 rounded bg-black/50 ring-1 ring-white/10 grid place-items-center text-[10px] font-semibold">
                                             {leftBadge}
                                         </div>
                                         <span className="truncate">{trait}</span>
@@ -782,28 +552,35 @@ export default function TFTShop() {
                                     <div className="ml-2 flex items-center gap-1 shrink-0">
                                         {nums.map((x, i) => {
                                             const tierOfX = tierOfNumber(trait, x);
-                                            const palette = tierOfX ? BP_TIER_CLASS[tierOfX] : { on: 'text-white/90', off: 'text-white/30' };
+                                            const palette = tierOfX ? BP_TIER_CLASS[tierOfX] : {
+                                                on: 'text-white/90',
+                                                off: 'text-white/30'
+                                            };
                                             const active = val >= x; // highlight if reached or exceeded
                                             return (
-                                                <span key={i} className={clx('text-[10px] tabular-nums', active ? palette.on : palette.off)}>
+                                                <span key={i}
+                                                      className={clx('text-[10px] tabular-nums', active ? palette.on : palette.off)}>
                                                     {x}
                                                 </span>
                                             );
                                         })}
                                     </div>
                                     {hoveredTrait === trait && (
-                                        <div className="absolute left-full top-0 ml-2 z-50 w-44 rounded-md bg-black/80 ring-1 ring-white/15 p-2 shadow-xl backdrop-blur">
+                                        <div
+                                            className="absolute left-full top-0 ml-2 z-50 w-44 rounded-md bg-black/80 ring-1 ring-white/15 p-2 shadow-xl backdrop-blur">
                                             <div className="text-[10px] text-white/60 mb-1">{trait}</div>
                                             <div className="grid grid-cols-5 gap-1">
                                                 {(traitUnitMap.get(trait) ?? []).map((u) => (
-                                                    <div key={u.key} className="relative w-8 h-8 rounded overflow-hidden ring-1 ring-white/10">
+                                                    <div key={u.key}
+                                                         className="relative w-8 h-8 rounded overflow-hidden ring-1 ring-white/10">
                                                         <Image
                                                             src={u.img ?? '/garen.jpg'}
                                                             alt={u.name}
                                                             fill
                                                             className={clx('object-cover', grayscaleIf(boardKeySet.has(u.key)))}
                                                         />
-                                                        <div className="absolute bottom-0 right-0 text-[8px] px-0.5 bg-black/70">{u.cost}</div>
+                                                        <div
+                                                            className="absolute bottom-0 right-0 text-[8px] px-0.5 bg-black/70">{u.cost}</div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -866,41 +643,42 @@ export default function TFTShop() {
 
                 {/* Bench */}
                 <Bench
-                  bench={bench}
-                  onHoverEnter={(i) => setHover({ over: 'bench', index: i })}
-                  onHoverLeave={(i) => setHover((h) => (h && h.over === 'bench' && h.index === i ? null : h))}
-                  allowDrop={allowDrop}
-                  dropToBench={dropToBench}
-                  beginDragBench={beginDragBench}
-                  endDrag={endDrag}
+                    bench={bench}
+                    onHoverEnter={(i) => setHover({over: 'bench', index: i})}
+                    onHoverLeave={(i) => setHover((h) => (h && h.over === 'bench' && h.index === i ? null : h))}
+                    allowDrop={allowDrop}
+                    dropToBench={dropToBench}
+                    beginDragBench={beginDragBench}
+                    endDrag={endDrag}
                 />
 
                 {/* Reroll Bar */}
                 <div
                     className="rounded-2xl bg-gradient-to-b from-slate-800/70 to-slate-900/80 ring-1 ring-white/10 p-4 shadow-2xl">
                     <HeaderBar
-                        level={level}
-                        xp={xp}
-                        xpReq={xpReq}
-                        onNudgeLevel={nudgeLevel}
-                        odds={odds}
-                        gold={gold}
-                        onAddGold={addGold}
-                        overlapModeLabel={`겹침: ${/* '없음' 또는 '있음' */ '없음'}`}
+                      level={level}
+                      xp={xp}
+                      xpReq={xpReq}
+                      onNudgeLevel={nudgeLevel}
+                      odds={odds}
+                      timeAttack
+                      timerSec={timerSec}
+                      spent={spent}
+                      overlapModeLabel={`겹침: ${'없음'}`}
                     />
 
                     {/* Actions + Shop */}
                     <ActionShop
-                      shop={shop}
-                      gold={gold}
-                      ownedKeys={ownedKeys}
-                      wanted={wanted}
-                      canBuyXP={canBuyXP}
-                      canReroll={canReroll}
-                      onBuyXP={buyXP}
-                      onReroll={reroll}
-                      onBuyFromShop={buyFromShop}
-                      getPromoStarBadge={getPromoStarBadge}
+                        shop={shop}
+                        gold={gold}
+                        ownedKeys={ownedKeys}
+                        wanted={wanted}
+                        canBuyXP={canBuyXP}
+                        canReroll={canReroll}
+                        onBuyXP={buyXP}
+                        onReroll={reroll}
+                        onBuyFromShop={buyFromShop}
+                        getPromoStarBadge={getPromoStarBadge}
                     />
                 </div>
                 {isDragging && (
