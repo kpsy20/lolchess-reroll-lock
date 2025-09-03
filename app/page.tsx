@@ -1,5 +1,5 @@
 'use client';
-import React, {useCallback, useEffect, useMemo, useState} from "react";
+import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import Image from 'next/image';
 import type {Unit} from "./lib/types";
 import {
@@ -28,6 +28,45 @@ export default function TFTShop() {
     const boardCount = board.reduce((acc, x) => acc + (x ? 1 : 0), 0);
 
     const firstEmptyBoardIndex = () => board.findIndex((x) => x === null);
+
+    // --- SFX: reroll ---
+    const rerollAudioRef = useRef<HTMLAudioElement | null>(null);
+    const buyAudioRef = useRef<HTMLAudioElement | null>(null);
+    const sellAudioRef = useRef<HTMLAudioElement | null>(null);
+    const twoStarAudioRef = useRef<HTMLAudioElement | null>(null);
+    const threeStarAudioRef = useRef<HTMLAudioElement | null>(null);
+    const moveAudioRef = useRef<HTMLAudioElement | null>(null);
+    const xpAudioRef = useRef<HTMLAudioElement | null>(null);
+    // --- BGM audio ---
+    const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
+
+    // Retry starting BGM on first user gesture (click/keydown)
+    useEffect(() => {
+        const resume = () => {
+            const el = bgmAudioRef.current;
+            if (!el) return;
+            el.volume = 0.1;
+            if (el.paused) {
+                el.play().catch(() => {});
+            }
+        };
+        window.addEventListener('pointerdown', resume, { once: true });
+        window.addEventListener('keydown', resume, { once: true });
+        return () => {
+            window.removeEventListener('pointerdown', resume);
+            window.removeEventListener('keydown', resume);
+        };
+    }, []);
+
+    const playAudio = (ref: React.RefObject<HTMLAudioElement | null>, vol = 0.2) => {
+        const el = ref.current;
+        if (!el) return;
+        try {
+            el.currentTime = 0;
+            el.volume = vol;
+            void el.play();
+        } catch {}
+    };
 
     // Load/Save
     useEffect(() => {
@@ -91,12 +130,14 @@ export default function TFTShop() {
         if (!canReroll || locked) return; // locked shop doesn't refresh
         setGold((g) => g - 2);
         setShop(makeShop(level, board, bench));
+        playAudio(rerollAudioRef);
     }, [canReroll, locked, level, board, bench]);
 
     const buyXP = useCallback(() => {
         if (!canBuyXP) return;
         setGold((g) => g - 4);
         setXp((v) => v + 4);
+        playAudio(xpAudioRef);
     }, [canBuyXP]);
 
     // Level stepper: only allow up/down, resets XP on change
@@ -108,6 +149,11 @@ export default function TFTShop() {
             }
             return next;
         });
+    }, []);
+
+    // Gold adjust helper (clamped)
+    const addGold = useCallback((amt: number) => {
+        setGold((g) => Math.min(10000, Math.max(0, g + amt)));
     }, []);
 
     useEffect(() => {
@@ -132,6 +178,7 @@ export default function TFTShop() {
         const merged = mergeAllUnits(nextBoard, nextBench);
         setBoard(merged.board);
         setBench(merged.bench);
+        playAudio(moveAudioRef)
     }, [bench, board, boardCount, level]);
 
     const returnToBench = useCallback((boardIdx: number) => {
@@ -141,6 +188,7 @@ export default function TFTShop() {
         if (empty === -1) return; // bench full
         setBench((b) => b.map((cell, i) => (i === empty ? u : cell)));
         setBoard((bd) => bd.map((cell, i) => (i === boardIdx ? null : cell)));
+        playAudio(moveAudioRef)
     }, [board, bench]);
 
     const buyFromShop = useCallback((idx: number) => {
@@ -149,16 +197,16 @@ export default function TFTShop() {
         if (!card) return;
         const cost = card.cost;
         if (gold < cost) return;
+        // Take a snapshot BEFORE we mutate anything (used for SFX merge detection)
+        const prevCnt = countByStarForKey(card.key, board, bench);
         const empty = bench.findIndex((s) => s === null);
         let nextBench: (Unit | null)[];
         let nextBoard: (Unit | null)[];
         if (empty === -1) {
             // Use star-count deltas instead of max-star to detect real merges (handles making a 2★ when one already exists)
-            const beforeCnt = countByStarForKey(card.key, board, bench);
-            // Try single-buy
             let sim = simulateBuyAndMerge(card, board, bench, 1);
             let afterCnt = countByStarForKey(card.key, sim.board, sim.bench);
-            const mergedSingle = (afterCnt.s3 > beforeCnt.s3) || (afterCnt.s2 > beforeCnt.s2);
+            const mergedSingle = (afterCnt.s3 > prevCnt.s3) || (afterCnt.s2 > prevCnt.s2);
             if (mergedSingle) {
                 nextBench = sim.bench;
                 nextBoard = sim.board;
@@ -171,7 +219,7 @@ export default function TFTShop() {
                 // Try double-buy using 2 virtual copies
                 sim = simulateBuyAndMerge(card, board, bench, 2);
                 afterCnt = countByStarForKey(card.key, sim.board, sim.bench);
-                const mergedDouble = (afterCnt.s3 > beforeCnt.s3) || (afterCnt.s2 > beforeCnt.s2);
+                const mergedDouble = (afterCnt.s3 > prevCnt.s3) || (afterCnt.s2 > prevCnt.s2);
                 if (!mergedDouble) return; // still cannot merge, abort
                 nextBench = sim.bench;
                 nextBoard = sim.board;
@@ -182,6 +230,11 @@ export default function TFTShop() {
                 setShop(nextShopDouble);
                 setBoard(nextBoard);
                 setBench(nextBench);
+                // SFX: buy + merge (use the snapshot prevCnt)
+                playAudio(buyAudioRef);
+                const newCntDouble = countByStarForKey(card.key, nextBoard, nextBench);
+                if (newCntDouble.s3 > prevCnt.s3) playAudio(threeStarAudioRef, 1);
+                else if (newCntDouble.s2 > prevCnt.s2) playAudio(twoStarAudioRef, 1);
                 return; // prevent single-buy finalizers below from running
             }
         } else {
@@ -199,6 +252,11 @@ export default function TFTShop() {
         setShop(nextShop);
         setBoard(nextBoard);
         setBench(nextBench);
+
+        playAudio(buyAudioRef);
+        const afterCnt = countByStarForKey(card.key, nextBoard, nextBench);
+        if (afterCnt.s3 > prevCnt.s3) playAudio(threeStarAudioRef, 1);
+        else if (afterCnt.s2 > prevCnt.s2) playAudio(twoStarAudioRef, 1);
     }, [gold, shop, bench, board]);
 
     const sellAt = useCallback((where: 'bench' | 'board', idx: number) => {
@@ -208,12 +266,14 @@ export default function TFTShop() {
             const sell = getSellGold(u);
             setGold((g) => g + sell);
             setBench((b) => b.map((cell, i) => (i === idx ? null : cell)));
+            playAudio(sellAudioRef);
         } else {
             const u = board[idx];
             if (!u) return;
             const sell = getSellGold(u);
             setGold((g) => g + sell);
             setBoard((bd) => bd.map((cell, i) => (i === idx ? null : cell)));
+            playAudio(sellAudioRef);
         }
     }, [bench, board]);
 
@@ -420,12 +480,10 @@ export default function TFTShop() {
         const merged = mergeAllUnits(nextBoard, nextBench);
         setBoard(merged.board);
         setBench(merged.bench);
+        playAudio(moveAudioRef)
     };
     // moveBoardToBench is not used in drop logic, can be omitted or updated if needed
 
-    const setBenchAt = (idx: number, u: Unit | null) => {
-        setBench((prev) => prev.map((cell, i) => (i === idx ? u : cell)));
-    };
     const clearBoardAt = (idx: number) => setBoard((bd) => bd.map((c, i) => (i === idx ? null : c)));
     const dropToBoard = (bdIdx: number) => {
         if (!dragSrc) return;
@@ -447,6 +505,7 @@ export default function TFTShop() {
             setBoard(nextBoard);
             setBench(nextBench);
             endDrag();
+            playAudio(moveAudioRef);
             return;
         }
 
@@ -460,6 +519,7 @@ export default function TFTShop() {
                 setBoard(merged.board);
                 setBench(merged.bench);
                 endDrag();
+                playAudio(moveAudioRef);
                 return;
             }
             // board -> occupied board : swap without merging
@@ -470,10 +530,12 @@ export default function TFTShop() {
             const nextBoard = board.map((cell, i) => (i === aIdx ? ub : i === bIdx2 ? ua : cell));
             setBoard(nextBoard);
             endDrag();
+            playAudio(moveAudioRef);
             return;
         }
 
         endDrag();
+        playAudio(moveAudioRef);
     };
 
     const dropToBench = (bIdx: number) => {
@@ -491,6 +553,7 @@ export default function TFTShop() {
                 setBench(merged.bench);
                 setBoard(merged.board);
                 endDrag();
+                playAudio(moveAudioRef);
                 return;
             }
             // board -> occupied bench : swap, no merge
@@ -499,6 +562,7 @@ export default function TFTShop() {
             setBench(nextBench);
             setBoard(nextBoard);
             endDrag();
+            playAudio(moveAudioRef);
             return;
         }
 
@@ -509,15 +573,18 @@ export default function TFTShop() {
                 // move bench -> empty bench
                 setBench((b) => b.map((cell, i) => (i === dragSrc.index ? null : i === bIdx ? u : cell)));
                 endDrag();
+                playAudio(moveAudioRef);
                 return;
             }
             // bench -> occupied bench : swap
             setBench((b) => b.map((cell, i) => (i === dragSrc.index ? b[bIdx] : i === bIdx ? u : cell)));
             endDrag();
+            playAudio(moveAudioRef);
             return;
         }
 
         endDrag();
+        playAudio(moveAudioRef);
     };
 
     const sellDragged = () => {
@@ -527,13 +594,16 @@ export default function TFTShop() {
             if (!u) return endDrag();
             setGold((g) => g + getSellGold(u));
             setBench((b) => b.map((cell, i) => (i === dragSrc.index ? null : cell)));
+            playAudio(moveAudioRef);
         } else if (dragSrc.from === 'board') {
             const u = board[dragSrc.index];
             if (!u) return endDrag();
             setGold((g) => g + getSellGold(u));
             clearBoardAt(dragSrc.index);
+            playAudio(moveAudioRef);
         }
         endDrag();
+        playAudio(moveAudioRef);
     };
 
     // Hotkeys
@@ -606,7 +676,18 @@ export default function TFTShop() {
     );
 
     return (
-        <div className="w-full min-h-screen bg-slate-900 text-slate-100 flex items-end justify-center p-6">
+        <div
+            className="w-full min-h-screen bg-slate-900 text-slate-100 flex items-end justify-center p-6"
+        >
+            <audio ref={rerollAudioRef} src="/sound/reroll.mp3" preload="auto" />
+            <audio ref={buyAudioRef} src="/sound/buy.mp3" preload="auto" />
+            <audio ref={sellAudioRef} src="/sound/sell.mp3" preload="auto" />
+            <audio ref={twoStarAudioRef} src="/sound/2star.mp3" preload="auto" />
+            <audio ref={threeStarAudioRef} src="/sound/3star.mp3" preload="auto" />
+            <audio ref={moveAudioRef} src="/sound/move.mp3" preload="auto" />
+            <audio ref={xpAudioRef} src="/sound/xp.mp3" preload="auto" />
+            <audio ref={bgmAudioRef} src="/sound/bgm_modified.mp3" preload="auto" />
+
             {/* Left Trait Panel (board-only) */}
             <div className="fixed left-4 top-24 z-40 w-44 select-none">
             {/* Right Wanted Panel */}
@@ -795,31 +876,23 @@ export default function TFTShop() {
                     className="rounded-2xl bg-gradient-to-b from-slate-800/70 to-slate-900/80 ring-1 ring-white/10 p-4 shadow-2xl">
                     {/* Top controls */}
                     <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="text-lg font-semibold">레벨 {level}</div>
-                            <div className="w-56 h-3 bg-black/30 rounded-full overflow-hidden ring-1 ring-white/10">
-                                <div
-                                    className="h-full bg-teal-400"
-                                    style={{width: `${xpReq ? Math.min(100, (xp / xpReq) * 100) : 100}%`}}
-                                />
-                            </div>
-                            <div className="text-xs text-white/70">
-                                {level < 10 ? (
-                                    <span>
-                    XP {xp}/{xpReq}
-                  </span>
-                                ) : (
-                                    <span>최대 레벨</span>
-                                )}
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            {OddsBar}
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <div
-                                className="px-3 py-1 rounded-md bg-black/40 ring-1 ring-white/10 text-yellow-300 font-bold">
-                                골드 {coins(gold)}
+                        {/* LEFT: Level UI */}
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="text-md font-semibold tabular-nums min-w-[56px]">레벨 {level}</div>
+                                <div className="w-56 h-2 bg-black/30 rounded-full overflow-hidden ring-1 ring-white/10">
+                                    <div
+                                        className="h-full bg-teal-400"
+                                        style={{ width: `${xpReq ? Math.min(100, (xp / xpReq) * 100) : 100}%` }}
+                                    />
+                                </div>
+                                <div className="text-xs text-white/70 tabular-nums font-mono w-16 text-right">
+                                    {level < 10 ? (
+                                        <span>XP {xp}/{xpReq}</span>
+                                    ) : (
+                                        <span>최대 레벨</span>
+                                    )}
+                                </div>
                             </div>
                             <div className="flex items-center gap-2">
                                 <label className="text-xs opacity-80">Lv</label>
@@ -831,7 +904,7 @@ export default function TFTShop() {
                                         disabled={level <= 1}
                                         title="레벨 내리기"
                                     >−</button>
-                                    <div className="w-8 text-center text-xs select-none">{level}</div>
+                                    <div className="w-8 text-center text-xs select-none tabular-nums font-mono">{level}</div>
                                     <button
                                         type="button"
                                         onClick={() => nudgeLevel(1)}
@@ -840,16 +913,41 @@ export default function TFTShop() {
                                         title="레벨 올리기"
                                     >+</button>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* CENTER: Odds (cost probabilities) */}
+                        <div className="flex items-center gap-3">
+                            {OddsBar}
+                        </div>
+
+                        {/* RIGHT: Gold UI */}
+                        <div className="flex items-center gap-3">
+                            <div className="px-3 py-1 rounded-md bg-black/40 ring-1 ring-white/10 text-yellow-300 font-bold tabular-nums font-mono min-w-[120px] text-right">
+                                G {coins(gold)}
+                            </div>
+                            <div className="flex items-center gap-2">
                                 <label className="text-xs opacity-80">G</label>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    max={10000}
-                                    value={gold}
-                                    onChange={(e) => setGold(Math.min(10000, Math.max(0, Number(e.target.value) || 0)))}
-                                    className="w-20 px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs"
-                                    title="골드 설정 (최대 10000)"
-                                />
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => addGold(10)}
+                                        className="px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs"
+                                        title="골드 +10"
+                                    >+10</button>
+                                    <button
+                                        type="button"
+                                        onClick={() => addGold(100)}
+                                        className="px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs"
+                                        title="골드 +100"
+                                    >+100</button>
+                                    <button
+                                        type="button"
+                                        onClick={() => addGold(1000)}
+                                        className="px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs"
+                                        title="골드 +1000"
+                                    >+1000</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -902,6 +1000,13 @@ export default function TFTShop() {
                                                 className="absolute inset-0 ring-2 ring-yellow-300/70 shadow-[0_0_12px_rgba(234,179,8,0.65)] rounded-xs"/>
                                         </div>
                                     )}
+                                    {/* Wanted but not owned overlay */}
+                                    {c && wanted.has(c.key) && !ownedKeys.has(c.key) && (
+                                        <div className="pointer-events-none absolute inset-0 rounded-xs bright-pulse z-30">
+                                            <div className="absolute inset-0 bg-white/14" />
+                                            <div className="absolute inset-0 ring-2 ring-pink-400/70 shadow-[0_0_10px_rgba(244,114,182,0.6)] rounded-xs" />
+                                        </div>
+                                    )}
                                     {c ? (
                                         <>
                                             {(() => {
@@ -917,9 +1022,14 @@ export default function TFTShop() {
                                             })()}
                                             {/* Wanted badge (top-left) */}
                                             {wanted.has((c as Unit).key) && (
-                                                <div className="absolute top-1 left-1 z-40 px-1.5 py-0.5 text-[10px] rounded bg-pink-500 text-black ring-1 ring-white/20">
-                                                    원하는
-                                                </div>
+                                                <Image
+                                                    src="/tag.png"
+                                                    alt="원하는 표시"
+                                                    width={24}
+                                                    height={24}
+                                                    className="absolute top-0 left-1 z-40 pointer-events-none select-none bright-pulse"
+                                                    priority
+                                                />
                                             )}
                                             <div className="relative flex-1">
                                                 <Image src={c.img ?? '/garen.jpg'} alt={c.name} fill
