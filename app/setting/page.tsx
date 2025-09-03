@@ -19,7 +19,7 @@ const PRESETS: Array<{ name: string; members: string[]; targetStar?: 1 | 2 | 3; 
     { name: '8소울 파이터', members: ['칼리스타','나피리','럭스','신 짜오','비에고','사미라','세트','그웬'] },
     { name: '7전사관 케틀 제이스', members: ['가렌','이즈리얼','라칸','코부코','제이스','케이틀린','레오나','유미'], targetStar: 2, threeStars: ['케이틀린', '제이스']},
     { name: '6법사 카르마', members: ['루시안','럭스','스웨인','아리','라이즈','자르반 4세','카르마','그웬','브라움'] },
-    { name: '6전쟁기계 케일', members: ['나피리','아트록스','자크','케일','문도박사','우디르','세트','리 신','브라움'], targetStar: 2, threeStars: ['자크', '아트록스', '케일'] },
+    { name: '6전쟁기계 케일', members: ['나피리','아트록스','자크','케일','문도 박사','우디르','세트','리 신','브라움'], targetStar: 2, threeStars: ['자크', '아트록스', '케일'] },
     { name: '7거대 메크 요네', members: ['루시안','아트록스','갱플랭크','세나','라이즈','자르반 4세','카르마','리 신','요네'] },
     { name: '고밸류 바루스', members: ['나르','잔나','스웨인','자르반 4세','크산테','바루스','브라움','자이라','트위스티드 페이트'] },
     { name: '고밸류 징크스', members: ['나르','렐','코부코','니코','뽀삐','징크스','크산테','바루스','브라움'] },
@@ -36,17 +36,29 @@ export default function SettingPage() {
     // 이름 -> 유닛 메타 매핑 (ROSTER 이용)
     const nameToUnit = useMemo(() => {
         const map = new Map<string, { key: string; name: string; img?: string; cost: number }>();
-        (Object.keys(ROSTER) as Array<keyof typeof ROSTER>).forEach((k) => {
+        Object.keys(ROSTER).forEach((k) => {
             const cost = Number(k);
             ROSTER[cost].forEach((u) => map.set(u.name, { key: u.key, name: u.name, img: u.img, cost }));
         });
+        
+        // 디버깅: 매핑 결과 확인
+        console.log('유닛 이름 매핑 생성 완료:', Array.from(map.entries()).slice(0, 5));
+        
         return map;
     }, []);
 
     const selectedPreset = PRESETS[selectedIdx];
     const selectedMembers = useMemo(() => {
         // 이름 매칭 실패하면 기본 이미지로라도 표시
-        return selectedPreset.members.map((n) => nameToUnit.get(n) || { key: n, name: n, img: undefined, cost: 0 });
+        return selectedPreset.members.map((n) => {
+            const unit = nameToUnit.get(n);
+            if (unit) {
+                return unit;
+            }
+            // 매칭 실패 시 로그 출력 및 기본값 반환
+            console.warn(`유닛 이름 매칭 실패: "${n}"`);
+            return { key: n, name: n, img: '/garen.jpg', cost: 0 };
+        });
     }, [selectedPreset, nameToUnit]);
 
     const start = useCallback(() => {
@@ -144,7 +156,18 @@ export default function SettingPage() {
                                         className="relative w-full aspect-square rounded-md overflow-hidden ring-1 ring-white/10"
                                         title={u.name}
                                     >
-                                        <Image src={u.img ?? '/garen.jpg'} alt={u.name} fill className="object-cover" />
+                                        <Image 
+                                            src={u.img ?? '/garen.jpg'} 
+                                            alt={u.name} 
+                                            fill 
+                                            className="object-cover"
+                                            onError={(e) => {
+                                                console.error(`이미지 로딩 실패: ${u.img} (${u.name})`);
+                                                // 에러 발생 시 기본 이미지로 fallback
+                                                const target = e.target as HTMLImageElement;
+                                                target.src = '/garen.jpg';
+                                            }}
+                                        />
                                         <div className="absolute inset-0 bg-black/25" />
                                         <div className="absolute bottom-1 left-1 right-1 text-[12px] font-semibold truncate text-white drop-shadow">
                                             {u.name}

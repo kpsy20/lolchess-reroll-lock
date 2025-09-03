@@ -83,29 +83,45 @@ export default function TFTShop() {
         };
     }, []);
 
+    // 카운트다운 타이머
     useEffect(() => {
         let t1: any;
         let t2: any;
         let startMs = 0;
+        
         t1 = setInterval(() => {
             setCountdown((c) => {
                 if (c <= 1) {
                     clearInterval(t1);
                     startMs = Date.now();
                     setRunning(true);
-                    t2 = setInterval(() => {
-                        setTimerSec(Math.floor((Date.now() - startMs) / 1000));
-                    }, 200);
                     return 0;
                 }
                 return c - 1;
             });
         }, 1000);
+        
         return () => {
             clearInterval(t1);
             clearInterval(t2);
         };
     }, []);
+
+    // 게임 실행 타이머
+    useEffect(() => {
+        if (!running || showResult) return;
+        
+        let t2: any;
+        const startMs = Date.now();
+        
+        t2 = setInterval(() => {
+            setTimerSec(Math.floor((Date.now() - startMs) / 1000));
+        }, 200);
+        
+        return () => {
+            clearInterval(t2);
+        };
+    }, [running, showResult]);
 
     const playAudio = (ref: React.RefObject<HTMLAudioElement | null>, vol = 0.2) => {
         const el = ref.current;
@@ -140,11 +156,14 @@ export default function TFTShop() {
         }
     }, []);
     useEffect(() => {
+        // 게임이 완료된 후에는 로컬 스토리지에 저장하지 않음
+        if (showResult) return;
+        
         localStorage.setItem(
             STORAGE_KEY,
             JSON.stringify({gold, level, xp, shop, locked, bench})
         );
-    }, [gold, level, xp, shop, locked, bench]);
+    }, [gold, level, xp, shop, locked, bench, showResult]);
 
     const odds = ODDS[level] || ODDS[3];
     const xpReq = XP_REQ[level] ?? 2; // levels 1-2 use a minimal requirement so you can level up
@@ -174,7 +193,7 @@ export default function TFTShop() {
     const [pool, setPool] = useState<Map<string, number>>(() => {
         const m = new Map<string, number>();
         const byCost: Record<number, number> = { 1: 30, 2: 25, 3: 18, 4: 10, 5: 9 };
-        (Object.keys(ROSTER) as Array<keyof typeof ROSTER>).forEach((ck) => {
+        Object.keys(ROSTER).forEach((ck) => {
             const cost = Number(ck);
             const cnt = byCost[cost] ?? 0;
             ROSTER[cost].forEach((u) => m.set(u.key, cnt));
@@ -185,7 +204,7 @@ export default function TFTShop() {
     // Flatten roster for the selector grid (right panel)
     const allUnits = useMemo(() => {
         const arr: Array<{ key: string; name: string; img?: string; cost: number }> = [];
-        (Object.keys(ROSTER) as Array<keyof typeof ROSTER>).forEach((k) => {
+        Object.keys(ROSTER).forEach((k) => {
             const cost = Number(k);
             ROSTER[cost].forEach((u) => arr.push({key: u.key, name: u.name, img: u.img, cost}));
         });
@@ -241,7 +260,7 @@ export default function TFTShop() {
     // Precompute trait -> list of units (with cost), sorted by cost asc then name
     const traitUnitMap = useMemo(() => {
         const map = new Map<string, Array<{ key: string; name: string; img?: string; cost: number }>>();
-        (Object.keys(ROSTER) as Array<keyof typeof ROSTER>).forEach((k) => {
+        Object.keys(ROSTER).forEach((k) => {
             const cost = Number(k);
             ROSTER[cost].forEach((u) => {
                 u.traits.forEach((t) => {
@@ -468,6 +487,8 @@ export default function TFTShop() {
 
     useEffect(() => {
         if (countdown > 0) return; // 아직 시작 전
+        if (showResult) return; // 이미 완료된 경우 중복 실행 방지
+        
         const req: Array<[string, number]> = targets
             ? Object.entries(targets)
             : Array.from(wanted).map((k) => [k, 2]); // 기본 목표: 원하는 유닛 전부 2성
@@ -507,7 +528,7 @@ export default function TFTShop() {
             }];
             localStorage.setItem(TA_RESULTS_KEY, JSON.stringify(arr));
         }
-    }, [board, bench, targets, wanted, countdown, deckName, spent, timerSec]);
+    }, [board, bench, targets, wanted, countdown, deckName, spent, timerSec, showResult]);
 
     const OddsBar = useMemo(
         () => (
@@ -540,6 +561,9 @@ export default function TFTShop() {
         setBoard(Array.from({length: BOARD_SIZE}, () => null));
         setBench(Array.from({length: BENCH_SIZE}, () => null));
         setShop(makeShop(3, [], []));
+        
+        // 타이머 재시작을 위해 countdown을 3으로 설정
+        // useEffect에서 countdown이 3일 때 타이머를 시작하도록 되어 있음
     }, [BOARD_SIZE]);
 
     return (
@@ -563,17 +587,12 @@ export default function TFTShop() {
         </span></div>
                             <div>쓴 돈: <span className="font-mono">{spent.toLocaleString('en-US')}</span></div>
                         </div>
-                        <div className="mt-4 flex justify-end gap-2">
+                        <div className="mt-4 flex justify-end">
                             <button
                                 type="button"
                                 onClick={() => router.push('/setting')}
                                 className="px-3 py-1.5 rounded-md bg-black/40 ring-1 ring-white/10 hover:bg-black/50"
                             >덱 고르기</button>
-                            <button
-                                type="button"
-                                onClick={resetRun}
-                                className="px-3 py-1.5 rounded-md bg-indigo-600/80 ring-1 ring-white/10 hover:bg-indigo-600"
-                            >한번 더 하기</button>
                         </div>
                     </div>
                 </div>
