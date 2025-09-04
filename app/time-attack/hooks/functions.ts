@@ -12,6 +12,60 @@ import {
     maxStarForKeyAcross,
 } from '../../lib/utils';
 
+// 겹치는 사람 설정에 따른 유닛 풀 업데이트 함수
+function updatePoolAfterBuy(
+    pool: Map<string, number>,
+    boughtKey: string,
+    boughtCost: number,
+    overlapMode: 'none' | 'with',
+    wanted: Set<string>,
+    quantity: number = 1
+) {
+    // 구매한 유닛의 코스트와 같은 모든 유닛 찾기
+    const sameCostUnits: string[] = [];
+    Object.keys(ROSTER).forEach((costStr) => {
+        const cost = Number(costStr);
+        if (cost === boughtCost) {
+            ROSTER[cost].forEach((unit) => {
+                sameCostUnits.push(unit.key);
+            });
+        }
+    });
+
+    for (let i = 0; i < quantity; i++) {
+        if (overlapMode === 'none') {
+            // 겹치는 사람 없음: 내 덱에 없는 같은 코스트 유닛 7마리 감소
+            const otherUnits = sameCostUnits.filter(key => !wanted.has(key));
+            let toRemove = 7;
+
+            for (const unitKey of otherUnits) {
+                if (toRemove <= 0) break;
+                const currentCount = pool.get(unitKey) || 0;
+                const removeFromThis = Math.min(currentCount, toRemove);
+                pool.set(unitKey, currentCount - removeFromThis);
+                toRemove -= removeFromThis;
+            }
+        } else {
+            // 겹치는 사람 있음: 내 덱에 없는 같은 코스트 유닛 6마리 + 구매한 유닛 1마리 감소
+            const otherUnits = sameCostUnits.filter(key => !wanted.has(key));
+            let toRemove = 6;
+
+            // 1. 다른 유닛들에서 6마리 감소
+            for (const unitKey of otherUnits) {
+                if (toRemove <= 0) break;
+                const currentCount = pool.get(unitKey) || 0;
+                const removeFromThis = Math.min(currentCount, toRemove);
+                pool.set(unitKey, currentCount - removeFromThis);
+                toRemove -= removeFromThis;
+            }
+
+            // 2. 구매한 유닛 1마리 감소
+            const boughtCount = pool.get(boughtKey) || 0;
+            pool.set(boughtKey, Math.max(0, boughtCount - 1));
+        }
+    }
+}
+
 export type DragSrc = { from: 'bench' | 'board'; index: number } | null;
 
 export type HandlerDeps = {
@@ -33,6 +87,8 @@ export type HandlerDeps = {
     setIsDragging: React.Dispatch<React.SetStateAction<boolean>>;
     spent: number;
     setSpent: React.Dispatch<React.SetStateAction<number>>;
+    rerollCount: number;
+    setRerollCount: React.Dispatch<React.SetStateAction<number>>;
     // overlap/pool
     overlapMode?: 'none' | 'with';
     wanted?: Set<string>;
@@ -61,6 +117,7 @@ export function createHandlers(deps: HandlerDeps) {
         board, setBoard,
         dragSrc, setDragSrc, setIsDragging,
         spent, setSpent,
+        rerollCount, setRerollCount,
         // overlap/pool
         overlapMode = 'none',
         wanted = new Set<string>(),
@@ -80,6 +137,7 @@ export function createHandlers(deps: HandlerDeps) {
     const reroll = () => {
         if (!canReroll || locked) return;
         setSpent((s) => s + 2);
+        setRerollCount((r) => r + 1);
         setShop(makeShop(level, board, bench, pool));
         playAudio(rerollAudioRef);
     };
@@ -346,6 +404,15 @@ export function createHandlers(deps: HandlerDeps) {
                 const newCntDouble = countByStarForKey(card.key, nextBoard, nextBench);
                 if (newCntDouble.s3 > prevCnt.s3) playAudio(threeStarAudioRef, 1);
                 else if (newCntDouble.s2 > prevCnt.s2) playAudio(twoStarAudioRef, 1);
+
+                // 풀에서 유닛 제거 (더블 구매)
+                if (setPool) {
+                    setPool(prevPool => {
+                        const newPool = new Map(prevPool);
+                        updatePoolAfterBuy(newPool, card.key, cost, overlapMode, wanted, 2);
+                        return newPool;
+                    });
+                }
                 return;
             }
         } else {
@@ -361,6 +428,15 @@ export function createHandlers(deps: HandlerDeps) {
         setShop(nextShop);
         setBoard(nextBoard);
         setBench(nextBench);
+
+        // 풀에서 유닛 제거 (싱글 구매)
+        if (setPool) {
+            setPool(prevPool => {
+                const newPool = new Map(prevPool);
+                updatePoolAfterBuy(newPool, card.key, cost, overlapMode, wanted, 1);
+                return newPool;
+            });
+        }
 
         playAudio(buyAudioRef);
         const afterCnt = countByStarForKey(card.key, nextBoard, nextBench);
@@ -395,4 +471,3 @@ export function createHandlers(deps: HandlerDeps) {
         getPromoStarBadge,
     } as const;
 }
-

@@ -47,16 +47,16 @@ export default function TFTShop() {
     // --- BGM audio ---
     const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
 
-    // --- Time Attack: countdown + timer + spent ---
+    // --- Time Attack: countdown + timer + spent + reroll count ---
     const [spent, setSpent] = useState(0);
+    const [rerollCount, setRerollCount] = useState(0);
     const [countdown, setCountdown] = useState(3); // 3..2..1..0
     const [running, setRunning] = useState(false);
     const [timerSec, setTimerSec] = useState(0);
 
-    // --- Preset targets & result modal ---
+    // --- Preset targets ---
     const [targets, setTargets] = useState<Record<string, number> | null>(null);
     const [deckName, setDeckName] = useState<string | null>(null);
-    const [showResult, setShowResult] = useState(false);
 
     // Overlap mode (겹치는 사람 옵션)
     type OverlapMode = 'none' | 'with';
@@ -109,7 +109,7 @@ export default function TFTShop() {
 
     // 게임 실행 타이머
     useEffect(() => {
-        if (!running || showResult) return;
+        if (!running) return;
         
         let t2: any;
         const startMs = Date.now();
@@ -121,7 +121,7 @@ export default function TFTShop() {
         return () => {
             clearInterval(t2);
         };
-    }, [running, showResult]);
+    }, [running]);
 
     const playAudio = (ref: React.RefObject<HTMLAudioElement | null>, vol = 0.2) => {
         const el = ref.current;
@@ -156,14 +156,11 @@ export default function TFTShop() {
         }
     }, []);
     useEffect(() => {
-        // 게임이 완료된 후에는 로컬 스토리지에 저장하지 않음
-        if (showResult) return;
-        
         localStorage.setItem(
             STORAGE_KEY,
             JSON.stringify({gold, level, xp, shop, locked, bench})
         );
-    }, [gold, level, xp, shop, locked, bench, showResult]);
+    }, [gold, level, xp, shop, locked, bench]);
 
     const odds = ODDS[level] || ODDS[3];
     const xpReq = XP_REQ[level] ?? 2; // levels 1-2 use a minimal requirement so you can level up
@@ -438,6 +435,7 @@ export default function TFTShop() {
         dragSrc, setDragSrc,
         setIsDragging,
         spent, setSpent,
+        rerollCount, setRerollCount,
         playAudio,
         refs: {moveAudioRef, buyAudioRef, sellAudioRef, rerollAudioRef, twoStarAudioRef, threeStarAudioRef, xpAudioRef},
         overlapMode,
@@ -487,7 +485,6 @@ export default function TFTShop() {
 
     useEffect(() => {
         if (countdown > 0) return; // 아직 시작 전
-        if (showResult) return; // 이미 완료된 경우 중복 실행 방지
         
         const req: Array<[string, number]> = targets
             ? Object.entries(targets)
@@ -502,10 +499,9 @@ export default function TFTShop() {
         }
         if (!ok) return;
 
-        // 완료!
+        // 완료! end 페이지로 이동
         setRunning(false);
-        setShowResult(true);
-
+        
         // 결과 저장 (누적)
         try {
             const raw = localStorage.getItem(TA_RESULTS_KEY);
@@ -513,22 +509,29 @@ export default function TFTShop() {
             arr.push({
                 deck: deckName || '(custom)',
                 spent,
+                rerollCount,
                 timeSec: timerSec,
                 date: new Date().toISOString(),
                 targets: Object.fromEntries(req),
+                overlapMode,
             });
             localStorage.setItem(TA_RESULTS_KEY, JSON.stringify(arr));
         } catch {
             const arr = [{
                 deck: deckName || '(custom)',
                 spent,
+                rerollCount,
                 timeSec: timerSec,
                 date: new Date().toISOString(),
                 targets: Object.fromEntries(req),
+                overlapMode,
             }];
             localStorage.setItem(TA_RESULTS_KEY, JSON.stringify(arr));
         }
-    }, [board, bench, targets, wanted, countdown, deckName, spent, timerSec, showResult]);
+        
+        // end 페이지로 이동
+        router.push('/end');
+    }, [board, bench, targets, wanted, countdown, deckName, spent, timerSec, rerollCount, router]);
 
     const OddsBar = useMemo(
         () => (
@@ -550,21 +553,7 @@ export default function TFTShop() {
         [odds]
     );
 
-    const resetRun = useCallback(() => {
-        setShowResult(false);
-        setSpent(0);
-        setTimerSec(0);
-        setCountdown(3);
-        setRunning(false);
-        setLevel(3);
-        setXp(0);
-        setBoard(Array.from({length: BOARD_SIZE}, () => null));
-        setBench(Array.from({length: BENCH_SIZE}, () => null));
-        setShop(makeShop(3, [], []));
-        
-        // 타이머 재시작을 위해 countdown을 3으로 설정
-        // useEffect에서 countdown이 3일 때 타이머를 시작하도록 되어 있음
-    }, [BOARD_SIZE]);
+
 
     return (
         <div
@@ -576,27 +565,7 @@ export default function TFTShop() {
                 </div>
             )}
 
-            {showResult && (
-                <div className="fixed inset-0 z-[120] bg-black/70 grid place-items-center p-4">
-                    <div className="w-full max-w-md rounded-xl bg-slate-800 ring-1 ring-white/10 p-5 shadow-2xl">
-                        <div className="text-lg font-bold mb-3">결과</div>
-                        <div className="space-y-1 text-sm">
-                            <div>덱: <span className="font-semibold">{deckName || '(custom)'}</span></div>
-                            <div>걸린 시간: <span className="font-mono">
-          {String(Math.floor(timerSec/60)).padStart(2,'0')}:{String(Math.floor(timerSec%60)).padStart(2,'0')}
-        </span></div>
-                            <div>쓴 돈: <span className="font-mono">{spent.toLocaleString('en-US')}</span></div>
-                        </div>
-                        <div className="mt-4 flex justify-end">
-                            <button
-                                type="button"
-                                onClick={() => router.push('/setting')}
-                                className="px-3 py-1.5 rounded-md bg-black/40 ring-1 ring-white/10 hover:bg-black/50"
-                            >덱 고르기</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+
 
             <audio ref={rerollAudioRef} src="/sound/reroll.mp3" preload="auto"/>
             <audio ref={buyAudioRef} src="/sound/buy.mp3" preload="auto"/>
@@ -626,8 +595,10 @@ export default function TFTShop() {
                                 type="button"
                                 onClick={() => toggleWanted(u.key)}
                                 className={clx(
-                                    "relative w-8 h-8 rounded overflow-hidden ring-1",
-                                    wanted.has(u.key) ? "ring-pink-400" : "ring-white/10 opacity-70"
+                                    "relative w-8 h-8 rounded overflow-hidden ring-1 transition-all duration-200",
+                                    wanted.has(u.key) 
+                                        ? "ring-pink-400 opacity-100" 
+                                        : "ring-white/10 opacity-40 hover:opacity-70"
                                 )}
                                 title={u.name}
                             >

@@ -108,8 +108,8 @@ export default function ActionShop({
                                     <Image
                                         src="/tag.png"
                                         alt="원하는 표시"
-                                        width={24}
-                                        height={24}
+                                        width={29}
+                                        height={29}
                                         className="absolute top-0 left-1 z-40 pointer-events-none select-none bright-pulse"
                                         priority
                                     />
