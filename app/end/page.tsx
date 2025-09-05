@@ -259,26 +259,26 @@ export default function EndPage() {
                             <div className="flex items-center gap-2">
                                 <span className="text-sm text-slate-400">겹치는 사람:</span>
                                 <div className="flex rounded-md overflow-hidden ring-1 ring-white/10">
-                                    <button
-                                        onClick={() => setMyOverlapFilter('all')}
-                                        className={`px-3 py-1 text-xs font-medium transition-colors ${
-                                            myOverlapFilter === 'all' 
-                                                ? 'bg-indigo-600 text-white' 
-                                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                        }`}
-                                    >
-                                        전체
-                                    </button>
-                                    <button
-                                        onClick={() => setMyOverlapFilter('with')}
-                                        className={`px-3 py-1 text-xs font-medium transition-colors ${
-                                            myOverlapFilter === 'with' 
-                                                ? 'bg-orange-600 text-white' 
-                                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                        }`}
-                                    >
-                                        있음
-                                    </button>
+                                    {/*<button*/}
+                                    {/*    onClick={() => setMyOverlapFilter('all')}*/}
+                                    {/*    className={`px-3 py-1 text-xs font-medium transition-colors ${*/}
+                                    {/*        myOverlapFilter === 'all' */}
+                                    {/*            ? 'bg-indigo-600 text-white' */}
+                                    {/*            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'*/}
+                                    {/*    }`}*/}
+                                    {/*>*/}
+                                    {/*    전체*/}
+                                    {/*</button>*/}
+                                    {/*<button*/}
+                                    {/*    onClick={() => setMyOverlapFilter('with')}*/}
+                                    {/*    className={`px-3 py-1 text-xs font-medium transition-colors ${*/}
+                                    {/*        myOverlapFilter === 'with' */}
+                                    {/*            ? 'bg-orange-600 text-white' */}
+                                    {/*            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'*/}
+                                    {/*    }`}*/}
+                                    {/*>*/}
+                                    {/*    있음*/}
+                                    {/*</button>*/}
                                     <button
                                         onClick={() => setMyOverlapFilter('none')}
                                         className={`px-3 py-1 text-xs font-medium transition-colors ${
@@ -408,26 +408,26 @@ export default function EndPage() {
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-slate-400">겹치는 사람:</span>
                             <div className="flex rounded-md overflow-hidden ring-1 ring-white/10">
-                                <button
-                                    onClick={() => setViewOverlapMode('all')}
-                                    className={`px-3 py-1 text-xs font-medium transition-colors ${
-                                        viewOverlapMode === 'all' 
-                                            ? 'bg-indigo-600 text-white' 
-                                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                    }`}
-                                >
-                                    전체
-                                </button>
-                                <button
-                                    onClick={() => setViewOverlapMode('with')}
-                                    className={`px-3 py-1 text-xs font-medium transition-colors ${
-                                        viewOverlapMode === 'with' 
-                                            ? 'bg-orange-600 text-white' 
-                                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                    }`}
-                                >
-                                    있음
-                                </button>
+                                {/*<button*/}
+                                {/*    onClick={() => setViewOverlapMode('all')}*/}
+                                {/*    className={`px-3 py-1 text-xs font-medium transition-colors ${*/}
+                                {/*        viewOverlapMode === 'all' */}
+                                {/*            ? 'bg-indigo-600 text-white' */}
+                                {/*            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'*/}
+                                {/*    }`}*/}
+                                {/*>*/}
+                                {/*    전체*/}
+                                {/*</button>*/}
+                                {/*<button*/}
+                                {/*    onClick={() => setViewOverlapMode('with')}*/}
+                                {/*    className={`px-3 py-1 text-xs font-medium transition-colors ${*/}
+                                {/*        viewOverlapMode === 'with' */}
+                                {/*            ? 'bg-orange-600 text-white' */}
+                                {/*            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'*/}
+                                {/*    }`}*/}
+                                {/*>*/}
+                                {/*    있음*/}
+                                {/*</button>*/}
                                 <button
                                     onClick={() => setViewOverlapMode('none')}
                                     className={`px-3 py-1 text-xs font-medium transition-colors ${
