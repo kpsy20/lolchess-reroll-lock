@@ -128,10 +128,35 @@ export default function TFTShop() {
 
     // 카운트다운 타이머
     useEffect(() => {
+        // 게임 시작 시 상태 초기화
+        const resetGameState = () => {
+            setGold(100);
+            setLevel(3);
+            setXp(0);
+            setBench(Array.from({length: BENCH_SIZE}, () => null));
+            setBoard(Array.from({length: BOARD_SIZE}, () => null));
+            setShop(makeShop(3, [], []));
+            setLocked(false);
+            setSpent(0);
+            setRerollCount(0);
+            setTimerSec(0);
+
+            // 풀 초기화
+            const newPool = new Map<string, number>();
+            const byCost: Record<number, number> = { 1: 30, 2: 25, 3: 18, 4: 10, 5: 9 };
+            Object.keys(ROSTER).forEach((ck) => {
+                const cost = Number(ck);
+                const cnt = byCost[cost] ?? 0;
+                ROSTER[cost].forEach((u) => newPool.set(u.key, cnt));
+            });
+            setPool(newPool);
+        };
+
         const t1 = setInterval(() => {
             setCountdown((c) => {
                 if (c <= 1) {
                     clearInterval(t1);
+                    resetGameState(); // 게임 시작 시 상태 초기화
                     setRunning(true);
                     return 0;
                 }
