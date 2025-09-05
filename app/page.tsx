@@ -28,6 +28,9 @@ export default function MainPage() {
     // 이미지 프리로딩
     useEffect(() => {
         const preloadImages = async () => {
+            // 브라우저 환경에서만 실행
+            if (typeof window === 'undefined') return;
+
             const imagePromises: Promise<void>[] = [];
 
             // ROSTER에서 모든 이미지 경로 수집
@@ -43,7 +46,7 @@ export default function MainPage() {
             // 각 이미지를 프리로드
             allImagePaths.forEach((imagePath) => {
                 const promise = new Promise<void>((resolve) => {
-                    const img = new Image();
+                    const img = document.createElement('img');
                     img.onload = () => resolve();
                     img.onerror = () => resolve(); // 에러가 나도 계속 진행
                     img.src = imagePath;
@@ -53,8 +56,10 @@ export default function MainPage() {
 
             try {
                 await Promise.all(imagePromises);
+                console.log(`${allImagePaths.size}개의 챔피언 이미지 프리로딩 완료`);
                 setImagesPreloaded(true);
             } catch (error) {
+                console.log("이미지 프리로딩 중 오류:", error);
                 setImagesPreloaded(true); // 오류가 나도 게임은 계속 진행
             }
         };
