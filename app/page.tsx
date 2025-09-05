@@ -1,11 +1,14 @@
 'use client';
 import Link from 'next/link';
 import Image from 'next/image';
-import React, {useEffect} from 'react';
+import React, {useEffect, useState} from 'react';
+import { ROSTER } from './lib/constants';
 
 export default function MainPage() {
     // proofs to show under the "이렇게 많은 증거 자료가 있습니다." heading
     const proofs = ['/i1.png', '/i2.png', '/i3.png', '/i4.png', '/i5.png', '/i6.png', '/i7.png'];
+
+    const [imagesPreloaded, setImagesPreloaded] = useState(false);
 
     // Fade-in on scroll via IntersectionObserver
     useEffect(() => {
@@ -20,6 +23,58 @@ export default function MainPage() {
         }, {threshold: 0.15});
         els.forEach((el) => obs.observe(el));
         return () => obs.disconnect();
+    }, []);
+
+    // 이미지 프리로딩
+    useEffect(() => {
+        const preloadImages = async () => {
+            const imagePromises: Promise<void>[] = [];
+
+            // ROSTER에서 모든 이미지 경로 수집
+            const allImagePaths = new Set<string>();
+            Object.values(ROSTER).forEach((units) => {
+                units.forEach((unit) => {
+                    if (unit.img) {
+                        allImagePaths.add(unit.img);
+                    }
+                });
+            });
+
+            // 각 이미지를 프리로드
+            allImagePaths.forEach((imagePath) => {
+                const promise = new Promise<void>((resolve) => {
+                    const img = new Image();
+                    img.onload = () => resolve();
+                    img.onerror = () => resolve(); // 에러가 나도 계속 진행
+                    img.src = imagePath;
+                });
+                imagePromises.push(promise);
+            });
+
+            try {
+                await Promise.all(imagePromises);
+                setImagesPreloaded(true);
+            } catch (error) {
+                setImagesPreloaded(true); // 오류가 나도 게임은 계속 진행
+            }
+        };
+
+        preloadImages();
+    }, []);
+
+    // Load/Save (Time Attack과 같은 로직)
+    useEffect(() => {
+        // localStorage에서 상태 로드하여 shop 초기화에 활용
+        const raw = localStorage.getItem('TFT_SHOP_STATE');
+        if (raw) {
+            try {
+                const s = JSON.parse(raw);
+                // shop 상태만 미리 로딩하여 Time Attack에서 사용할 수 있도록 준비
+                console.log('게임 상태 로드 완료');
+            } catch {
+                console.log('localStorage 파싱 실패');
+            }
+        }
     }, []);
 
     return (
