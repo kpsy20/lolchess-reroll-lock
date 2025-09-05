@@ -201,16 +201,35 @@ export function mergeAllUnits(boardArr: (Unit | null)[], benchArr: (Unit | null)
                 while (toRemove.length < 2 && bIdxs.length > 0) toRemove.push({ from: 'board', idx: bIdxs.shift()! });
                 if (toRemove.length < 2) break;
 
+                // 제거될 유닛들의 removedUnits 정보를 수집
+                const allRemovedUnits: string[] = [];
+
+                // 타겟 유닛의 removedUnits 추가
+                if (targetFrom === 'board') {
+                    const u = board[targetIdx];
+                    if (u && u.removedUnits) allRemovedUnits.push(...u.removedUnits);
+                } else {
+                    const u = bench[targetIdx];
+                    if (u && u.removedUnits) allRemovedUnits.push(...u.removedUnits);
+                }
+
+                // 제거될 유닛들의 removedUnits 추가
                 for (const r of toRemove) {
+                    const unit = r.from === 'bench' ? bench[r.idx] : board[r.idx];
+                    if (unit && unit.removedUnits) {
+                        allRemovedUnits.push(...unit.removedUnits);
+                    }
+                    // 유닛 제거
                     if (r.from === 'bench') bench[r.idx] = null; else board[r.idx] = null;
                 }
 
+                // 타겟 유닛을 업그레이드하면서 모든 removedUnits 정보 병합
                 if (targetFrom === 'board') {
                     const u = board[targetIdx];
-                    if (u) board[targetIdx] = { ...u, star: (u.star ?? 1) + 1 };
+                    if (u) board[targetIdx] = { ...u, star: (u.star ?? 1) + 1, removedUnits: allRemovedUnits };
                 } else {
                     const u = bench[targetIdx];
-                    if (u) bench[targetIdx] = { ...u, star: (u.star ?? 1) + 1 };
+                    if (u) bench[targetIdx] = { ...u, star: (u.star ?? 1) + 1, removedUnits: allRemovedUnits };
                 }
             }
         });
