@@ -35,16 +35,16 @@ export default function EndPage() {
     const PAGE_SIZE = 20;
     const [myPage, setMyPage] = useState(1);
     // overlap filter for viewing records
-    const [viewOverlapMode, setViewOverlapMode] = useState<'none' | 'with' | 'all'>('all');
+    const [viewOverlapMode, setViewOverlapMode] = useState<'none' | 'with' | 'all'>('none');
     // overlap filter for my results table
-    const [myOverlapFilter, setMyOverlapFilter] = useState<'none' | 'with' | 'all'>('all');
+    const [myOverlapFilter, setMyOverlapFilter] = useState<'none' | 'with' | 'all'>('none');
 
-    // 현재 결과의 overlapMode에 따라 초기값 설정
-    useEffect(() => {
-        if (currentResult) {
-            setViewOverlapMode(currentResult.overlapMode === 'with' ? 'with' : 'none');
-        }
-    }, [currentResult]);
+    // 겹치는 사람 관련 useEffect 제거
+    // useEffect(() => {
+    //     if (currentResult) {
+    //         setViewOverlapMode(currentResult.overlapMode === 'with' ? 'with' : 'none');
+    //     }
+    // }, [currentResult]);
 
     // key -> 한글 이름 매핑
     const keyToKoreanName = useMemo(() => {
@@ -703,7 +703,7 @@ export default function EndPage() {
                     )}
                 </div>
 
-                {/* 액션 버튼들 */}
+                {/* ��션 버튼들 */}
                 <div className="mt-8 flex justify-center gap-4">
                     <button
                         onClick={() => router.push('/setting')}

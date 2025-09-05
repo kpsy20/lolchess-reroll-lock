@@ -144,8 +144,8 @@ export default function SettingPage() {
                                 className="bg-slate-800 border border-white/20 rounded px-2 py-1 text-sm"
                                 title="겹치는 사람 옵션"
                               >
-                                {/*<option value="none">없음</option>*/}
-                                <option value="with">있음</option>
+                                <option value="none">없음</option>
+                                {/*<option value="with">있음</option>*/}
                               </select>
                             </div>
 

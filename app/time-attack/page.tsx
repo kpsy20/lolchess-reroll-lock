@@ -64,24 +64,51 @@ export default function TFTShop() {
 
     const router = useRouter();
 
-    // Retry starting BGM on first user gesture (click/keydown)
+    // BGM 상태 관리 추가
+    const [bgmInitialized, setBgmInitialized] = useState(false);
+
+    // BGM 초기화 및 재생 (한 번만 실행)
     useEffect(() => {
-        const resume = () => {
+        if (bgmInitialized) return;
+
+        const initBGM = () => {
             const el = bgmAudioRef.current;
             if (!el) return;
+
+            // BGM 설정
             el.volume = 0.1;
+            el.loop = true; // 반복 재생 설정
+
             if (el.paused) {
                 el.play().catch(() => {
+                    console.log('BGM 자동 재생 실패 - 사용자 상호작용 대기');
                 });
             }
+
+            setBgmInitialized(true);
         };
-        window.addEventListener('pointerdown', resume, {once: true});
-        window.addEventListener('keydown', resume, {once: true});
+
+        // 첫 사용자 상호작용에서 BGM 시작
+        const startBGMOnInteraction = () => {
+            initBGM();
+            // 이벤트 리스너 제거 (한 번만 실행)
+            window.removeEventListener('pointerdown', startBGMOnInteraction);
+            window.removeEventListener('keydown', startBGMOnInteraction);
+        };
+
+        // 즉시 시도해보고, 실패하면 사용자 상호작용 대기
+        initBGM();
+
+        if (!bgmInitialized) {
+            window.addEventListener('pointerdown', startBGMOnInteraction, {once: true});
+            window.addEventListener('keydown', startBGMOnInteraction, {once: true});
+        }
+
         return () => {
-            window.removeEventListener('pointerdown', resume);
-            window.removeEventListener('keydown', resume);
+            window.removeEventListener('pointerdown', startBGMOnInteraction);
+            window.removeEventListener('keydown', startBGMOnInteraction);
         };
-    }, []);
+    }, [bgmInitialized]);
 
     // 카운트다운 타이머
     useEffect(() => {
@@ -557,7 +584,7 @@ export default function TFTShop() {
 
     return (
         <div
-            className="w-full min-h-screen bg-slate-900 text-slate-100 flex items-end justify-center p-6"
+            className="w-full min-h-screen bg-slate-900 text-slate-100 flex items-start justify-center p-6 pt-16"
         >
             {countdown > 0 && (
                 <div className="fixed inset-0 z-[100] bg-black/60 grid place-items-center select-none">
