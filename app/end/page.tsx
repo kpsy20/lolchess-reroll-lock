@@ -35,16 +35,16 @@ export default function EndPage() {
     const PAGE_SIZE = 20;
     const [myPage, setMyPage] = useState(1);
     // overlap filter for viewing records
-    const [viewOverlapMode, setViewOverlapMode] = useState<'none' | 'with' | 'all'>('all');
+    const [viewOverlapMode, setViewOverlapMode] = useState<'none' | 'with' | 'all'>('none');
     // overlap filter for my results table
-    const [myOverlapFilter, setMyOverlapFilter] = useState<'none' | 'with' | 'all'>('all');
+    const [myOverlapFilter, setMyOverlapFilter] = useState<'none' | 'with' | 'all'>('none');
 
-    // 현재 결과의 overlapMode에 따라 초기값 설정
-    useEffect(() => {
-        if (currentResult) {
-            setViewOverlapMode(currentResult.overlapMode === 'with' ? 'with' : 'none');
-        }
-    }, [currentResult]);
+    // 겹치는 사람 관련 useEffect 제거
+    // useEffect(() => {
+    //     if (currentResult) {
+    //         setViewOverlapMode(currentResult.overlapMode === 'with' ? 'with' : 'none');
+    //     }
+    // }, [currentResult]);
 
     // key -> 한글 이름 매핑
     const keyToKoreanName = useMemo(() => {
@@ -185,7 +185,7 @@ export default function EndPage() {
                         className="flex items-center gap-2"
                     >
                         <div className="relative w-8 h-8 rounded overflow-hidden ring-1 ring-black/10">
-                            <Image src="/ground.jpg" alt="홈" fill className="object-cover"/>
+                            <Image src="/ground.jpg" alt="홈" fill className="object-cover" sizes="32px"/>
                         </div>
                     </button>
 
@@ -259,26 +259,26 @@ export default function EndPage() {
                             <div className="flex items-center gap-2">
                                 <span className="text-sm text-slate-400">겹치는 사람:</span>
                                 <div className="flex rounded-md overflow-hidden ring-1 ring-white/10">
-                                    <button
-                                        onClick={() => setMyOverlapFilter('all')}
-                                        className={`px-3 py-1 text-xs font-medium transition-colors ${
-                                            myOverlapFilter === 'all' 
-                                                ? 'bg-indigo-600 text-white' 
-                                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                        }`}
-                                    >
-                                        전체
-                                    </button>
-                                    <button
-                                        onClick={() => setMyOverlapFilter('with')}
-                                        className={`px-3 py-1 text-xs font-medium transition-colors ${
-                                            myOverlapFilter === 'with' 
-                                                ? 'bg-orange-600 text-white' 
-                                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                        }`}
-                                    >
-                                        있음
-                                    </button>
+                                    {/*<button*/}
+                                    {/*    onClick={() => setMyOverlapFilter('all')}*/}
+                                    {/*    className={`px-3 py-1 text-xs font-medium transition-colors ${*/}
+                                    {/*        myOverlapFilter === 'all' */}
+                                    {/*            ? 'bg-indigo-600 text-white' */}
+                                    {/*            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'*/}
+                                    {/*    }`}*/}
+                                    {/*>*/}
+                                    {/*    전체*/}
+                                    {/*</button>*/}
+                                    {/*<button*/}
+                                    {/*    onClick={() => setMyOverlapFilter('with')}*/}
+                                    {/*    className={`px-3 py-1 text-xs font-medium transition-colors ${*/}
+                                    {/*        myOverlapFilter === 'with' */}
+                                    {/*            ? 'bg-orange-600 text-white' */}
+                                    {/*            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'*/}
+                                    {/*    }`}*/}
+                                    {/*>*/}
+                                    {/*    있음*/}
+                                    {/*</button>*/}
                                     <button
                                         onClick={() => setMyOverlapFilter('none')}
                                         className={`px-3 py-1 text-xs font-medium transition-colors ${
@@ -408,26 +408,26 @@ export default function EndPage() {
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-slate-400">겹치는 사람:</span>
                             <div className="flex rounded-md overflow-hidden ring-1 ring-white/10">
-                                <button
-                                    onClick={() => setViewOverlapMode('all')}
-                                    className={`px-3 py-1 text-xs font-medium transition-colors ${
-                                        viewOverlapMode === 'all' 
-                                            ? 'bg-indigo-600 text-white' 
-                                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                    }`}
-                                >
-                                    전체
-                                </button>
-                                <button
-                                    onClick={() => setViewOverlapMode('with')}
-                                    className={`px-3 py-1 text-xs font-medium transition-colors ${
-                                        viewOverlapMode === 'with' 
-                                            ? 'bg-orange-600 text-white' 
-                                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                    }`}
-                                >
-                                    있음
-                                </button>
+                                {/*<button*/}
+                                {/*    onClick={() => setViewOverlapMode('all')}*/}
+                                {/*    className={`px-3 py-1 text-xs font-medium transition-colors ${*/}
+                                {/*        viewOverlapMode === 'all' */}
+                                {/*            ? 'bg-indigo-600 text-white' */}
+                                {/*            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'*/}
+                                {/*    }`}*/}
+                                {/*>*/}
+                                {/*    전체*/}
+                                {/*</button>*/}
+                                {/*<button*/}
+                                {/*    onClick={() => setViewOverlapMode('with')}*/}
+                                {/*    className={`px-3 py-1 text-xs font-medium transition-colors ${*/}
+                                {/*        viewOverlapMode === 'with' */}
+                                {/*            ? 'bg-orange-600 text-white' */}
+                                {/*            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'*/}
+                                {/*    }`}*/}
+                                {/*>*/}
+                                {/*    있음*/}
+                                {/*</button>*/}
                                 <button
                                     onClick={() => setViewOverlapMode('none')}
                                     className={`px-3 py-1 text-xs font-medium transition-colors ${
@@ -703,7 +703,7 @@ export default function EndPage() {
                     )}
                 </div>
 
-                {/* 액션 버튼들 */}
+                {/* ��션 버튼들 */}
                 <div className="mt-8 flex justify-center gap-4">
                     <button
                         onClick={() => router.push('/setting')}

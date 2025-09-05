@@ -53,6 +53,7 @@ export const firestoreService = {
         date: result.date,
         targets: result.targets,
         overlapMode: result.overlapMode,
+        version: "1.0.0",
         createdAt: new Date()
       });
       return docRef.id;

@@ -145,7 +145,7 @@ export default function SettingPage() {
                                 title="겹치는 사람 옵션"
                               >
                                 <option value="none">없음</option>
-                                <option value="with">있음</option>
+                                {/*<option value="with">있음</option>*/}
                               </select>
                             </div>
 

@@ -1,5 +1,3 @@
-
-
 'use client';
 import React from 'react';
 import Image from 'next/image';
@@ -42,7 +40,13 @@ export default function Bench({
         >
           {bench[i] ? (
             <>
-              <Image src={bench[i]!.img ?? '/garen.jpg'} alt={bench[i]!.name} fill className="object-cover" />
+              <Image
+                src={bench[i]!.img ?? '/garen.jpg'}
+                alt={bench[i]!.name}
+                fill
+                className="object-cover"
+                sizes="64px"
+              />
               <div className="absolute inset-0 bg-black/30" />
               <div className="absolute top-1 right-1 z-20 px-1.5 py-0.5 text-[10px] rounded bg-black text-white ring-1 ring-white/10">
                 {'★'.repeat(bench[i]!.star ?? 1)}

@@ -52,28 +52,28 @@ export default function HeaderBar({level, xp, xpReq, onNudgeLevel, odds, gold, o
                         )}
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <label className="text-xs opacity-80">Lv</label>
-                    <div className="flex items-center gap-1">
-                        <button
-                            type="button"
-                            onClick={() => onNudgeLevel(-1)}
-                            className="px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs disabled:opacity-40"
-                            disabled={level <= 1}
-                            title="레벨 내리기"
-                        >−
-                        </button>
-                        <div className="w-8 text-center text-xs select-none tabular-nums font-mono">{level}</div>
-                        <button
-                            type="button"
-                            onClick={() => onNudgeLevel(1)}
-                            className="px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs disabled:opacity-40"
-                            disabled={level >= 10}
-                            title="레벨 올리기"
-                        >+
-                        </button>
-                    </div>
-                </div>
+                {/*<div className="flex items-center gap-2">*/}
+                {/*    <label className="text-xs opacity-80">Lv</label>*/}
+                {/*    <div className="flex items-center gap-1">*/}
+                {/*        <button*/}
+                {/*            type="button"*/}
+                {/*            onClick={() => onNudgeLevel(-1)}*/}
+                {/*            className="px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs disabled:opacity-40"*/}
+                {/*            disabled={level <= 1}*/}
+                {/*            title="레벨 내리기"*/}
+                {/*        >−*/}
+                {/*        </button>*/}
+                {/*        <div className="w-8 text-center text-xs select-none tabular-nums font-mono">{level}</div>*/}
+                {/*        <button*/}
+                {/*            type="button"*/}
+                {/*            onClick={() => onNudgeLevel(1)}*/}
+                {/*            className="px-2 py-1 rounded bg-black/40 ring-1 ring-white/10 text-xs disabled:opacity-40"*/}
+                {/*            disabled={level >= 10}*/}
+                {/*            title="레벨 올리기"*/}
+                {/*        >+*/}
+                {/*        </button>*/}
+                {/*    </div>*/}
+                {/*</div>*/}
             </div>
 
             {/* CENTER: Odds (cost probabilities) */}
@@ -90,14 +90,14 @@ export default function HeaderBar({level, xp, xpReq, onNudgeLevel, odds, gold, o
             {/* RIGHT: Gold UI */}
             {/* RIGHT: Timer / Spent (time-attack) or Gold */}
             <div className="flex items-center gap-3">
-                {overlapModeLabel && (
-                    <div
-                        className="px-2 py-1 rounded bg-black/30 ring-1 ring-white/10 text-[11px] text-white/70 select-none"
-                        title="겹치는 사람 옵션"
-                    >
-                        {overlapModeLabel}
-                    </div>
-                )}
+                {/*{overlapModeLabel && (*/}
+                {/*    <div*/}
+                {/*        className="px-2 py-1 rounded bg-black/30 ring-1 ring-white/10 text-[11px] text-white/70 select-none"*/}
+                {/*        title="겹치는 사람 옵션"*/}
+                {/*    >*/}
+                {/*        {overlapModeLabel}*/}
+                {/*    </div>*/}
+                {/*)}*/}
 
                 {timeAttack ? (
                     <>
@@ -111,7 +111,7 @@ export default function HeaderBar({level, xp, xpReq, onNudgeLevel, odds, gold, o
                             className="px-3 py-1 rounded-md bg-black/40 ring-1 ring-white/10 text-yellow-300 font-bold tabular-nums font-mono min-w-[140px] text-right"
                             title="누적 사용 골드"
                         >
-                            Spent {Number(spent ?? 0).toLocaleString('en-US')}
+                            사용한 G {Number(spent ?? 0).toLocaleString('en-US')}
                         </div>
                     </>
                 ) : (
