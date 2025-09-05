@@ -75,58 +75,69 @@ export default function TFTShop() {
 
     // BGM 초기화 및 재생 (한 번만 실행)
     useEffect(() => {
-        if (bgmInitialized) return;
-
         const initBGM = () => {
             const el = bgmAudioRef.current;
             if (!el) return;
 
-            // BGM 설정
-            el.volume = 0.1;
-            el.loop = true; // 반복 재생 설정
+            try {
+                // BGM 설정
+                el.volume = 0.1;
+                el.loop = true; // 반복 재생 설정
 
-            if (el.paused) {
-                el.play().catch(() => {
+                // 즉시 재생 시도
+                el.play().then(() => {
+                    console.log('BGM 자동 재생 성공');
+                    setBgmInitialized(true);
+                }).catch(() => {
                     console.log('BGM 자동 재생 실패 - 사용자 상호작용 대기');
                 });
+            } catch (error) {
+                console.log('BGM 초기화 오류:', error);
             }
-
-            setBgmInitialized(true);
         };
 
         // 첫 사용자 상호작용에서 BGM 시작
         const startBGMOnInteraction = () => {
-            initBGM();
-            // 이벤트 리스너 제거 (한 번만 실행)
-            window.removeEventListener('pointerdown', startBGMOnInteraction);
-            window.removeEventListener('keydown', startBGMOnInteraction);
+            const el = bgmAudioRef.current;
+            if (!el || !el.paused) return;
+
+            el.play().then(() => {
+                console.log('사용자 상호작용으로 BGM 재생 성공');
+                setBgmInitialized(true);
+                // 이벤트 리스너 제거
+                document.removeEventListener('click', startBGMOnInteraction);
+                document.removeEventListener('keydown', startBGMOnInteraction);
+                document.removeEventListener('touchstart', startBGMOnInteraction);
+            }).catch((error) => {
+                console.log('BGM 재생 실패:', error);
+            });
         };
 
-        // 즉시 시도해보고, 실패하면 사용자 상호작용 대기
-        initBGM();
+        // 페이지 로드 후 즉시 시도
+        const timer = setTimeout(() => {
+            initBGM();
+        }, 100);
 
-        if (!bgmInitialized) {
-            window.addEventListener('pointerdown', startBGMOnInteraction, {once: true});
             window.addEventListener('keydown', startBGMOnInteraction, {once: true});
-        }
+        // 다양한 사용자 상호작용 이벤트에 리스너 추가
+        document.addEventListener('click', startBGMOnInteraction, {once: true});
+        document.addEventListener('keydown', startBGMOnInteraction, {once: true});
+        document.addEventListener('touchstart', startBGMOnInteraction, {once: true});
 
         return () => {
-            window.removeEventListener('pointerdown', startBGMOnInteraction);
-            window.removeEventListener('keydown', startBGMOnInteraction);
+            clearTimeout(timer);
+            document.removeEventListener('click', startBGMOnInteraction);
+            document.removeEventListener('keydown', startBGMOnInteraction);
+            document.removeEventListener('touchstart', startBGMOnInteraction);
         };
-    }, [bgmInitialized]);
+    }, []); // 의존성 배열을 비워서 컴포넌트 마운트 시에만 실행
 
     // 카운트다운 타이머
     useEffect(() => {
-        let t1: any;
-        let t2: any;
-        let startMs = 0;
-        
-        t1 = setInterval(() => {
+        const t1 = setInterval(() => {
             setCountdown((c) => {
                 if (c <= 1) {
                     clearInterval(t1);
-                    startMs = Date.now();
                     setRunning(true);
                     return 0;
                 }
@@ -136,7 +147,6 @@ export default function TFTShop() {
         
         return () => {
             clearInterval(t1);
-            clearInterval(t2);
         };
     }, []);
 
@@ -144,10 +154,10 @@ export default function TFTShop() {
     useEffect(() => {
         if (!running) return;
         
-        let t2: any;
+
         const startMs = Date.now();
         
-        t2 = setInterval(() => {
+        const t2 = setInterval(() => {
             setTimerSec(Math.floor((Date.now() - startMs) / 1000));
         }, 200);
         
@@ -832,7 +842,7 @@ export default function TFTShop() {
                              className="fixed bottom-4 left-4 w-48 h-48 rounded-xl bg-red-600/30 ring-2 ring-red-400 flex items-center justify-center text-sm font-bold text-red-100 select-none">판매
                         </div>
                         <div onDragOver={allowDrop} onDrop={sellDragged}
-                             className="fixed bottom-4 right-4 w-48 h-48 rounded-xl bg-red-600/30 ring-2 ring-red-400 flex items-center justify-center text-sm font-bold text-red-100 select-none">판��
+                             className="fixed bottom-4 right-4 w-48 h-48 rounded-xl bg-red-600/30 ring-2 ring-red-400 flex items-center justify-center text-sm font-bold text-red-100 select-none">판매
                         </div>
                     </>
                 )}
