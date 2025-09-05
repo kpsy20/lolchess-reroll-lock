@@ -53,7 +53,7 @@ export default function MainPage() {
                 {/* Hero Section */}
                 <section className="relative flex-1 flex flex-col items-center justify-center text-center px-4">
                     <h1 className="text-4xl md:text-6xl font-bold mb-6 text-white">
-                        기물락은 존재한��
+                        기물락은 존재한다
                     </h1>
                     <div className="flex gap-4">
                         <Link
