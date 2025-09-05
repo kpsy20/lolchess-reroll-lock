@@ -35,7 +35,7 @@ export default function MainPage() {
                             className="flex items-center gap-2"
                         >
                             <div className="relative w-8 h-8 rounded overflow-hidden ring-1 ring-black/10">
-                                <Image src="/ground.jpg" alt="홈" fill className="object-cover"/>
+                                <Image src="/ground.jpg" alt="홈" fill className="object-cover" sizes="32px"/>
                             </div>
                         </button>
 
@@ -53,7 +53,7 @@ export default function MainPage() {
                 {/* Hero Section */}
                 <section className="relative flex-1 flex flex-col items-center justify-center text-center px-4">
                     <h1 className="text-4xl md:text-6xl font-bold mb-6 text-white">
-                        기물락은 존재한다
+                        기물락은 존재한��
                     </h1>
                     <div className="flex gap-4">
                         <Link

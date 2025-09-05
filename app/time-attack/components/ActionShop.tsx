@@ -116,7 +116,7 @@ export default function ActionShop({
                                 )}
 
                                 <div className="relative flex-1">
-                                    <Image src={c.img ?? '/garen.jpg'} alt={c.name} fill className="object-cover"/>
+                                    <Image src={c.img ?? '/garen.jpg'} alt={c.name} fill className="object-cover" sizes="64px"/>
                                     <div className="absolute inset-0 bg-black/30"/>
 
                                     {/* Traits overlay (bottom-left) */}

@@ -629,7 +629,7 @@ export default function TFTShop() {
                                 )}
                                 title={u.name}
                             >
-                                <Image src={u.img ?? '/garen.jpg'} alt={u.name} fill className="object-cover"/>
+                                <Image src={u.img ?? '/garen.jpg'} alt={u.name} fill className="object-cover" sizes="32px"/>
                                 <div className="absolute bottom-0 right-0 text-[8px] px-0.5 bg-black/70">{u.cost}</div>
                                 {wanted.has(u.key) && (
                                     <div className="absolute inset-0 ring-2 ring-pink-400/70"/>
@@ -813,7 +813,7 @@ export default function TFTShop() {
                              className="fixed bottom-4 left-4 w-48 h-48 rounded-xl bg-red-600/30 ring-2 ring-red-400 flex items-center justify-center text-sm font-bold text-red-100 select-none">판매
                         </div>
                         <div onDragOver={allowDrop} onDrop={sellDragged}
-                             className="fixed bottom-4 right-4 w-48 h-48 rounded-xl bg-red-600/30 ring-2 ring-red-400 flex items-center justify-center text-sm font-bold text-red-100 select-none">판매
+                             className="fixed bottom-4 right-4 w-48 h-48 rounded-xl bg-red-600/30 ring-2 ring-red-400 flex items-center justify-center text-sm font-bold text-red-100 select-none">판��
                         </div>
                     </>
                 )}

@@ -185,7 +185,7 @@ export default function EndPage() {
                         className="flex items-center gap-2"
                     >
                         <div className="relative w-8 h-8 rounded overflow-hidden ring-1 ring-black/10">
-                            <Image src="/ground.jpg" alt="홈" fill className="object-cover"/>
+                            <Image src="/ground.jpg" alt="홈" fill className="object-cover" sizes="32px"/>
                         </div>
                     </button>
 
