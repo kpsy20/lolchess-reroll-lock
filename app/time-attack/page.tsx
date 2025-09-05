@@ -16,8 +16,6 @@ import {createHandlers, DragSrc} from './hooks/functions';
 import HeaderBar from "./components/HeaderBar"
 import ActionShop from './components/ActionShop';
 import Bench from './components/Bench';
-import PoolTracker from './components/PoolTracker';
-
 // Preset payload from /setting page
 const TA_PRESET_KEY = 'TA_SELECTED_PRESET';
 const TA_RESULTS_KEY = 'TA_HISTORY_V1';
@@ -63,10 +61,6 @@ export default function TFTShop() {
     // Overlap mode (겹치는 사람 옵션)
     type OverlapMode = 'none' | 'with';
     const [overlapMode, setOverlapMode] = useState<OverlapMode>('none');
-
-    // 유닛 ID 관리 및 풀 복구를 위한 상태들
-    const [nextUnitId, setNextUnitId] = useState(0);
-    const [unitToRemovedUnits, setUnitToRemovedUnits] = useState<Map<string, string[]>>(new Map());
 
     const router = useRouter();
 
@@ -241,12 +235,6 @@ export default function TFTShop() {
         return m;
     });
 
-    // 구매 매핑 상태 (구매한 유닛과 제거된 유닛들의 매핑)
-    const [purchaseMappings, setPurchaseMappings] = useState<Array<{
-        boughtUnitKey: string;
-        removedUnits: { unitKey: string; amount: number }[];
-    }>>([]);
-
     // Flatten roster for the selector grid (right panel)
     const allUnits = useMemo(() => {
         const arr: Array<{ key: string; name: string; img?: string; cost: number }> = [];
@@ -365,7 +353,7 @@ export default function TFTShop() {
     type TraitTier = 'none' | 'bronze' | 'silver' | 'gold';
     const tierForTrait = React.useCallback((trait: string, count: number): TraitTier => {
         // Special rule: "크루" tiers depend on the number of 3★ units on board
-        if (trait === '크��') {
+        if (trait === '크루') {
             const n = threeStarOnBoard;
             if (n >= 3) return 'gold';
             if (n >= 1) return 'silver';
@@ -491,10 +479,6 @@ export default function TFTShop() {
         wanted,
         pool,
         setPool,
-        unitToRemovedUnits,
-        setUnitToRemovedUnits,
-        nextUnitId,
-        setNextUnitId,
     });
 
     // Hotkeys
@@ -745,9 +729,6 @@ export default function TFTShop() {
                 </div>
             </div>
             <div className="w-[1100px] max-w-full">
-                {/* Pool Tracker - 챔피언별 남은 개수 */}
-                <PoolTracker pool={pool} wanted={wanted} />
-
                 {/* Board (main field) – Hex (staggered) */}
                 {(() => {
                     const HEX_W = 132;  // px

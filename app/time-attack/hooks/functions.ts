@@ -21,22 +21,6 @@ function updatePoolAfterBuy(
     wanted: Set<string>,
     quantity: number = 1
 ) {
-    const allRemovedUnits: string[] = [];
-    const removeMyUnit = overlapMode === 'with' ? 2 : 1;
-
-    // 내 덱에 없는 유닛을 구매한 경우, 그 유닛만 제거하고 리턴
-    if (!wanted.has(boughtKey)) {
-        for (let i = 0; i < quantity; i++) {
-            const boughtUnitCount = pool.get(boughtKey) || 0;
-            if (boughtUnitCount > 0) {
-                pool.set(boughtKey, boughtUnitCount - 1);
-                allRemovedUnits.push(boughtKey);
-            }
-        }
-        return allRemovedUnits;
-    }
-
-    // 내 덱에 있는 유닛을 구매한 경우, 기존 로직 적용
     // 구매한 유닛의 코스트와 같은 모든 유닛 찾기
     const sameCostUnits: string[] = [];
     Object.keys(ROSTER).forEach((costStr) => {
@@ -48,49 +32,38 @@ function updatePoolAfterBuy(
         }
     });
 
-    const toRemove = overlapMode === 'with' ? 6 : 7;
-
     for (let i = 0; i < quantity; i++) {
-        // 먼저 구매한 유닛 자체를 풀에서 제거
-        const boughtUnitCount = pool.get(boughtKey) || 0;
-        if (boughtUnitCount >= removeMyUnit) {
-            pool.set(boughtKey, boughtUnitCount - removeMyUnit);
-            for (let j = 0; j < removeMyUnit; j++) {
-                allRemovedUnits.push(boughtKey);
+        if (overlapMode === 'none') {
+            // 겹치는 사람 없음: 내 덱에 없는 같은 코스트 유닛 7마리 감소
+            const otherUnits = sameCostUnits.filter(key => !wanted.has(key));
+            let toRemove = 7;
+
+            for (const unitKey of otherUnits) {
+                if (toRemove <= 0) break;
+                const currentCount = pool.get(unitKey) || 0;
+                const removeFromThis = Math.min(currentCount, toRemove);
+                pool.set(unitKey, currentCount - removeFromThis);
+                toRemove -= removeFromThis;
             }
-        }
+        } else {
+            // 겹치는 사람 있음: 내 덱에 없는 같은 코스트 유닛 6마리 + 구매한 유닛 1마리 감소
+            const otherUnits = sameCostUnits.filter(key => !wanted.has(key));
+            let toRemove = 6;
 
-        const otherUnits = sameCostUnits.filter(key => !wanted.has(key) && key !== boughtKey);
+            // 1. 다른 유닛들에서 6마리 감소
+            for (const unitKey of otherUnits) {
+                if (toRemove <= 0) break;
+                const currentCount = pool.get(unitKey) || 0;
+                const removeFromThis = Math.min(currentCount, toRemove);
+                pool.set(unitKey, currentCount - removeFromThis);
+                toRemove -= removeFromThis;
+            }
 
-        let remainingToRemove = toRemove;
-        while (remainingToRemove > 0) {
-            const availableUnits = otherUnits.filter(key => (pool.get(key) || 0) > 0);
-            if (availableUnits.length === 0) break;
-
-            const randomIndex = Math.floor(Math.random() * availableUnits.length);
-            const selectedUnit = availableUnits[randomIndex];
-
-            // 선택된 유닛을 배열에 추가
-            allRemovedUnits.push(selectedUnit);
-
-            const currentCount = pool.get(selectedUnit) || 0;
-            pool.set(selectedUnit, currentCount - 1);
-
-            remainingToRemove--;
+            // 2. 구매한 유닛 1마리 감소
+            const boughtCount = pool.get(boughtKey) || 0;
+            pool.set(boughtKey, Math.max(0, boughtCount - 1));
         }
     }
-    return allRemovedUnits;
-}
-
-// 유닛 판매 시 풀 복구 함수
-function restorePoolAfterSell(
-    pool: Map<string, number>,
-    removedUnits: string[]
-) {
-    removedUnits.forEach(unitKey => {
-        const currentCount = pool.get(unitKey) || 0;
-        pool.set(unitKey, currentCount + 1);
-    });
 }
 
 export type DragSrc = { from: 'bench' | 'board'; index: number } | null;
@@ -131,10 +104,6 @@ export type HandlerDeps = {
         threeStarAudioRef: React.RefObject<HTMLAudioElement | null>;
         xpAudioRef: React.RefObject<HTMLAudioElement | null>;
     };
-    unitToRemovedUnits: Map<string, string[]>;
-    setUnitToRemovedUnits: React.Dispatch<React.SetStateAction<Map<string, string[]>>>;
-    nextUnitId: number;
-    setNextUnitId: React.Dispatch<React.SetStateAction<number>>;
 };
 
 export function createHandlers(deps: HandlerDeps) {
@@ -156,7 +125,6 @@ export function createHandlers(deps: HandlerDeps) {
         setPool,
         playAudio,
         refs: {moveAudioRef, buyAudioRef, sellAudioRef, rerollAudioRef, twoStarAudioRef, threeStarAudioRef, xpAudioRef},
-        unitToRemovedUnits, setUnitToRemovedUnits, nextUnitId, setNextUnitId
     } = deps;
 
     const boardCount = board.reduce((acc, x) => acc + (x ? 1 : 0), 0);
@@ -364,36 +332,16 @@ export function createHandlers(deps: HandlerDeps) {
             const sell = getSellGold(u);
             /* time-attack: selling doesn't change spent */
             setSpent((s) => s - sell);
-
-            // 풀 복구
-            if (setPool && u.removedUnits) {
-                setPool(prevPool => {
-                    const newPool = new Map(prevPool);
-                    restorePoolAfterSell(newPool, u.removedUnits!);
-                    return newPool;
-                });
-            }
-
-            setBench((b) => b.map((cell, i) => (i === dragSrc!.index ? null : cell)));
-            playAudio(sellAudioRef);
+            setBench((b) => b.map((cell, i) => (i === dragSrc.index ? null : cell)));
+            playAudio(moveAudioRef);
         } else if (dragSrc.from === 'board') {
             const u = board[dragSrc.index];
             if (!u) return endDrag();
             const sell = getSellGold(u);
             /* time-attack: selling doesn't change spent */
             setSpent((s) => s - sell);
-
-            // 풀 복구
-            if (setPool && u.removedUnits) {
-                setPool(prevPool => {
-                    const newPool = new Map(prevPool);
-                    restorePoolAfterSell(newPool, u.removedUnits!);
-                    return newPool;
-                });
-            }
-
             clearBoardAt(dragSrc.index);
-            playAudio(sellAudioRef);
+            playAudio(moveAudioRef);
         }
         endDrag();
         playAudio(moveAudioRef);
@@ -406,16 +354,6 @@ export function createHandlers(deps: HandlerDeps) {
             const sell = getSellGold(u);
             /* time-attack: selling doesn't change spent */
             setSpent((s) => s - sell);
-
-            // 풀 복구
-            if (setPool && u.removedUnits) {
-                setPool(prevPool => {
-                    const newPool = new Map(prevPool);
-                    restorePoolAfterSell(newPool, u.removedUnits!);
-                    return newPool;
-                });
-            }
-
             setBench((b) => b.map((cell, i) => (i === idx ? null : cell)));
             playAudio(sellAudioRef);
         } else {
@@ -424,16 +362,6 @@ export function createHandlers(deps: HandlerDeps) {
             const sell = getSellGold(u);
             /* time-attack: selling doesn't change spent */
             setSpent((s) => s - sell);
-
-            // 풀 복구
-            if (setPool && u.removedUnits) {
-                setPool(prevPool => {
-                    const newPool = new Map(prevPool);
-                    restorePoolAfterSell(newPool, u.removedUnits!);
-                    return newPool;
-                });
-            }
-
             setBoard((bd) => bd.map((cell, i) => (i === idx ? null : cell)));
             playAudio(sellAudioRef);
         }
@@ -445,9 +373,6 @@ export function createHandlers(deps: HandlerDeps) {
         if (!card) return;
         const cost = card.cost;
 
-        const unitId = `${card.key}_${nextUnitId}`;
-        setNextUnitId(prev => prev + 1);
-
         const prevCnt = countByStarForKey(card.key, board, bench);
         const empty = bench.findIndex((s) => s === null);
         let nextBench: (Unit | null)[];
@@ -458,27 +383,8 @@ export function createHandlers(deps: HandlerDeps) {
             let afterCnt = countByStarForKey(card.key, sim.board, sim.bench);
             const mergedSingle = afterCnt.s3 > prevCnt.s3 || afterCnt.s2 > prevCnt.s2;
             if (mergedSingle) {
-                let removedUnits: string[] = [];
-                if (setPool) {
-                    setPool(prevPool => {
-                        const newPool = new Map(prevPool);
-                        removedUnits = updatePoolAfterBuy(newPool, card.key, cost, overlapMode, wanted, 1);
-                        unitToRemovedUnits.set(unitId, removedUnits);
-                        return newPool;
-                    });
-                }
-
-                // 새로 생성된 유닛에 removedUnits 정보 추가
-                nextBench = sim.bench.map(unit =>
-                    unit && unit.key === card.key && !bench.some(benchUnit => benchUnit === unit)
-                        ? {...unit, removedUnits}
-                        : unit
-                );
-                nextBoard = sim.board.map(unit =>
-                    unit && unit.key === card.key && !board.some(boardUnit => boardUnit === unit)
-                        ? {...unit, removedUnits}
-                        : unit
-                );
+                nextBench = sim.bench;
+                nextBoard = sim.board;
             } else {
                 const j = shop.findIndex((s, k) => k !== idx && s && s.key === card.key);
                 if (j === -1) return;
@@ -487,30 +393,8 @@ export function createHandlers(deps: HandlerDeps) {
                 afterCnt = countByStarForKey(card.key, sim.board, sim.bench);
                 const mergedDouble = afterCnt.s3 > prevCnt.s3 || afterCnt.s2 > prevCnt.s2;
                 if (!mergedDouble) return;
-
-                // 풀에서 유닛 제거 정보 미리 계산 (더블 구매)
-                let removedUnits: string[] = [];
-                if (setPool) {
-                    setPool(prevPool => {
-                        const newPool = new Map(prevPool);
-                        removedUnits = updatePoolAfterBuy(newPool, card.key, cost, overlapMode, wanted, 2);
-                        unitToRemovedUnits.set(unitId, removedUnits);
-                        return newPool;
-                    });
-                }
-
-                // 새로 생��된 유닛에 removedUnits 정��� 추가
-                nextBench = sim.bench.map(unit =>
-                    unit && unit.key === card.key && !bench.some(benchUnit => benchUnit === unit)
-                        ? {...unit, removedUnits}
-                        : unit
-                );
-                nextBoard = sim.board.map(unit =>
-                    unit && unit.key === card.key && !board.some(boardUnit => boardUnit === unit)
-                        ? {...unit, removedUnits}
-                        : unit
-                );
-
+                nextBench = sim.bench;
+                nextBoard = sim.board;
                 setSpent((s) => s + cost * 2);
                 const nextShopDouble = shop.map((c, k) => (k === idx || k === j ? null : c));
                 setShop(nextShopDouble);
@@ -520,21 +404,19 @@ export function createHandlers(deps: HandlerDeps) {
                 const newCntDouble = countByStarForKey(card.key, nextBoard, nextBench);
                 if (newCntDouble.s3 > prevCnt.s3) playAudio(threeStarAudioRef, 1);
                 else if (newCntDouble.s2 > prevCnt.s2) playAudio(twoStarAudioRef, 1);
+
+                // 풀에서 유닛 제거 (더블 구매)
+                if (setPool) {
+                    setPool(prevPool => {
+                        const newPool = new Map(prevPool);
+                        updatePoolAfterBuy(newPool, card.key, cost, overlapMode, wanted, 2);
+                        return newPool;
+                    });
+                }
                 return;
             }
         } else {
-            // 풀에서 유닛 제거 정보 미리 계산
-            let removedUnits: string[] = [];
-            if (setPool) {
-                setPool(prevPool => {
-                    const newPool = new Map(prevPool);
-                    removedUnits = updatePoolAfterBuy(newPool, card.key, cost, overlapMode, wanted, 1);
-                    unitToRemovedUnits.set(unitId, removedUnits);
-                    return newPool;
-                });
-            }
-
-            const tmpBench = bench.map((cell, i) => (i === empty ? {...card, star: 1, removedUnits} : cell));
+            const tmpBench = bench.map((cell, i) => (i === empty ? {...card, star: 1} : cell));
             const merged = mergeAllUnits(board, tmpBench);
             nextBench = merged.bench;
             nextBoard = merged.board;
@@ -547,15 +429,14 @@ export function createHandlers(deps: HandlerDeps) {
         setBoard(nextBoard);
         setBench(nextBench);
 
-        // 풀에서 유닛 제거 (싱글 구매) - 이미 위에서 처리됨
-        // if (setPool) {
-        //     setPool(prevPool => {
-        //         const newPool = new Map(prevPool);
-        //         const removedUnits = updatePoolAfterBuy(newPool, card.key, cost, overlapMode, wanted, 2);
-        //         unitToRemovedUnits.set(unitId, removedUnits);
-        //         return newPool;
-        //     });
-        // }
+        // 풀에서 유닛 제거 (싱글 구매)
+        if (setPool) {
+            setPool(prevPool => {
+                const newPool = new Map(prevPool);
+                updatePoolAfterBuy(newPool, card.key, cost, overlapMode, wanted, 1);
+                return newPool;
+            });
+        }
 
         playAudio(buyAudioRef);
         const afterCnt = countByStarForKey(card.key, nextBoard, nextBench);
